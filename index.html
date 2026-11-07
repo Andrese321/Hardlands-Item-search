@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hardlands · Buscador de objetos</title>
+  <meta name="description" content="Encuentra cualquier objeto en un mundo de Minecraft Bedrock: cofres, shulkers, jugadores y entidades.">
+  <meta name="theme-color" content="#1f6f3a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <img src="icons/icon.svg" alt="" width="28" height="28">
+    <div>
+      <h1>Hardlands</h1>
+      <p>Buscador de objetos · Minecraft Bedrock</p>
+    </div>
+  </header>
+
+  <main>
+    <!-- 1. Abrir mundo -->
+    <section id="screen-load" class="screen">
+      <div class="card">
+        <h2>Abre el mundo</h2>
+        <p class="muted">Elige el archivo del mundo. Se lee <strong>solo en tu dispositivo</strong>: no se sube a ningún sitio y no se modifica.</p>
+        <label class="btn primary file-btn">
+          <input id="input-zip" type="file" accept=".mcworld,.zip,application/zip,application/octet-stream">
+          Abrir archivo .mcworld o .zip
+        </label>
+        <label class="btn file-btn">
+          <input id="input-folder" type="file" webkitdirectory directory multiple>
+          Abrir carpeta del mundo
+        </label>
+        <div id="cached" class="cached" hidden>
+          <p class="muted">Último mundo escaneado:</p>
+          <button id="btn-cached" class="btn"></button>
+        </div>
+      </div>
+
+      <details class="card help">
+        <summary>¿Cómo consigo el archivo del mundo?</summary>
+        <ul>
+          <li><strong>Servidor dedicado (BDS):</strong> copia la carpeta <code>worlds/&lt;nombre del mundo&gt;</code> y comprímela en .zip (o ábrela como carpeta en PC).</li>
+          <li><strong>Hosting (Aternos, Apex, etc.):</strong> descarga una copia de seguridad del mundo desde el panel o por FTP. El .zip descargado sirve tal cual.</li>
+          <li><strong>Realm:</strong> en los ajustes del Realm usa <em>Descargar mundo</em>; el mundo aparecerá entre tus mundos locales y desde ahí lo exportas como .mcworld.</li>
+          <li><strong>Mundo local:</strong> en Minecraft, <em>Editar mundo → Exportar mundo</em> crea un .mcworld.</li>
+        </ul>
+        <p class="muted">Consejo: haz la copia con el servidor apagado o justo después de un guardado (<code>save hold</code>/<code>save resume</code>) para que esté al día.</p>
+      </details>
+    </section>
+
+    <!-- 2. Progreso -->
+    <section id="screen-progress" class="screen" hidden>
+      <div class="card">
+        <h2 id="progress-title">Leyendo el mundo…</h2>
+        <p id="progress-status" class="muted">Preparando…</p>
+        <div class="bar"><div id="progress-bar"></div></div>
+        <p class="muted small">Un mundo grande puede tardar un poco en el móvil.</p>
+      </div>
+    </section>
+
+    <!-- 3. Elegir mundo (si el archivo contiene varios) -->
+    <section id="screen-choose" class="screen" hidden>
+      <div class="card">
+        <h2>Hay varios mundos</h2>
+        <p class="muted">¿Cuál quieres escanear?</p>
+        <div id="world-list" class="stack"></div>
+      </div>
+    </section>
+
+    <!-- 4. Buscador -->
+    <section id="screen-app" class="screen" hidden>
+      <div class="worldbar">
+        <div>
+          <strong id="world-name"></strong>
+          <span id="world-stats" class="muted small"></span>
+        </div>
+        <button id="btn-change" class="btn small">Cambiar mundo</button>
+      </div>
+      <div id="warnings" class="warn" hidden></div>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-tab="search" aria-selected="true">Buscar</button>
+        <button role="tab" class="tab" data-tab="players" aria-selected="false">Jugadores</button>
+      </nav>
+
+      <div id="tab-search">
+        <div class="searchbox">
+          <input id="query" type="search" placeholder="Nombre del objeto (p. ej. diamante, elytra…)" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+        </div>
+        <div class="filters">
+          <div class="chips" id="kind-chips">
+            <button class="chip active" data-kind="all">Todo</button>
+            <button class="chip" data-kind="container">Contenedores</button>
+            <button class="chip" data-kind="player">Jugadores</button>
+            <button class="chip" data-kind="entity">Entidades</button>
+          </div>
+          <select id="dim" aria-label="Dimensión">
+            <option value="all">Todas las dimensiones</option>
+            <option value="0">Mundo normal</option>
+            <option value="1">Nether</option>
+            <option value="2">End</option>
+          </select>
+        </div>
+        <div id="player-filter" class="player-filter" hidden></div>
+        <p id="summary" class="muted small"></p>
+        <div id="results" class="results"></div>
+      </div>
+
+      <div id="tab-players" hidden>
+        <p class="muted small">Bedrock no guarda el nombre (gamertag) de los jugadores en el mundo, solo un identificador. Toca <em>Poner nombre</em> para recordar quién es cada uno (por su última posición, por ejemplo).</p>
+        <div id="players" class="stack"></div>
+      </div>
+    </section>
+
+    <!-- Error -->
+    <div id="error" class="card error" hidden>
+      <strong>No se pudo leer el mundo</strong>
+      <p id="error-text"></p>
+      <button id="btn-error" class="btn">Volver</button>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
