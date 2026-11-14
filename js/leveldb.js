@@ -225,6 +225,8 @@ export function parseManifest(bytes) {
   const live = new Map(); // número de fichero -> nivel
   let logNumber = 0;
   let prevLogNumber = 0;
+  let nextFile = 0;
+  let lastSequence = 0;
   for (const rec of logRecords(bytes)) {
     let pos = 0;
     while (pos < rec.length) {
@@ -233,8 +235,8 @@ export function parseManifest(bytes) {
       switch (tag) {
         case 1: [, pos] = readLenPrefixed(rec, pos); break; // comparador
         case 2: [logNumber, pos] = readVarint(rec, pos); break;
-        case 3: [, pos] = readVarint(rec, pos); break; // siguiente fichero
-        case 4: [, pos] = readVarint(rec, pos); break; // última secuencia
+        case 3: [nextFile, pos] = readVarint(rec, pos); break;
+        case 4: [lastSequence, pos] = readVarint(rec, pos); break;
         case 5: [, pos] = readVarint(rec, pos); [, pos] = readLenPrefixed(rec, pos); break;
         case 6: {
           let num;
@@ -260,7 +262,7 @@ export function parseManifest(bytes) {
       }
     }
   }
-  return { liveTables: new Set(live.keys()), logNumber, prevLogNumber };
+  return { liveTables: new Set(live.keys()), logNumber, prevLogNumber, nextFile, lastSequence };
 }
 
 // ---------- tablas .ldb / .sst ----------
@@ -338,16 +340,24 @@ function fileNumber(name) {
 }
 
 /**
- * Lee la base de datos y devuelve Map<claveComoTexto, Uint8Array> con los
- * valores actuales de las claves que acepte `wantKey(keyBytes)`.
+ * Recorre todas las entradas (tablas y registros vivos) de la base de datos
+ * y llama a onEntry(keyBytes, seq, valueBytes|null) por cada una, incluidas
+ * versiones antiguas y borrados (quien llama decide cuál vale).
+ *
+ * Con `strict`, cualquier fichero ilegible es un error (necesario al editar:
+ * si faltara una tabla se podrían dejar chunks a medio borrar).
  *
  * @param {Array<{name:string,size:number,read:()=>Promise<Uint8Array>}>} files
  *        ficheros de la carpeta db/ (solo el nombre, sin ruta)
  */
-export async function readLevelDb(files, { wantKey = () => true, onProgress = () => {} } = {}) {
+export async function scanLevelDb(files, { onEntry, onProgress = () => {}, strict = false } = {}) {
   const byName = new Map(files.map((f) => [f.name, f]));
   let manifest = null;
   const warnings = [];
+  const fail = (msg) => {
+    if (strict) throw new Error(msg);
+    warnings.push(msg);
+  };
 
   try {
     const current = byName.get('CURRENT');
@@ -357,15 +367,20 @@ export async function readLevelDb(files, { wantKey = () => true, onProgress = ()
       if (mf) manifest = parseManifest(await mf.read());
     }
   } catch (e) {
-    warnings.push('No se pudo leer el MANIFEST (' + e.message + '); se leerán todos los ficheros.');
     manifest = null;
+    fail('No se pudo leer el MANIFEST (' + e.message + ').');
   }
+  if (strict && !manifest) throw new Error('No se encontró el MANIFEST de la base de datos (CURRENT).');
 
   const tables = [];
   const logs = [];
+  let maxFileNumber = 0;
   for (const f of files) {
     const num = fileNumber(f.name);
+    const m = /^MANIFEST-(\d+)$/.exec(f.name);
+    if (m) maxFileNumber = Math.max(maxFileNumber, Number(m[1]));
     if (num < 0) continue;
+    maxFileNumber = Math.max(maxFileNumber, num);
     if (/\.log$/.test(f.name)) {
       if (!manifest || num >= manifest.logNumber || (manifest.prevLogNumber && num === manifest.prevLogNumber)) logs.push(f);
     } else if (!manifest || manifest.liveTables.has(num)) {
@@ -375,16 +390,14 @@ export async function readLevelDb(files, { wantKey = () => true, onProgress = ()
   if (manifest) {
     const present = new Set(tables.map((f) => fileNumber(f.name)));
     const missing = [...manifest.liveTables].filter((n) => !present.has(n));
-    if (missing.length) warnings.push(`Faltan ${missing.length} ficheros .ldb: el mundo puede estar incompleto.`);
+    if (missing.length) fail(`Faltan ${missing.length} ficheros .ldb: el mundo está incompleto.`);
   }
+  if (tables.length + logs.length === 0) throw new Error('La carpeta db/ no contiene datos de LevelDB.');
 
-  const entries = new Map();
-  const put = (key, seq, value) => {
-    if (!wantKey(key)) return;
-    const k = keyToString(key);
-    const prev = entries.get(k);
-    if (prev && prev.seq > seq) return;
-    entries.set(k, { seq, value: value ? value.slice() : null });
+  let maxSeq = manifest ? manifest.lastSequence : 0;
+  const cb = (key, seq, value) => {
+    if (seq > maxSeq) maxSeq = seq;
+    onEntry(key, seq, value);
   };
 
   const total = [...tables, ...logs].reduce((s, f) => s + (f.size || 0), 0) || 1;
@@ -393,10 +406,10 @@ export async function readLevelDb(files, { wantKey = () => true, onProgress = ()
 
   for (const f of tables) {
     try {
-      readTable(await f.read(), put);
+      readTable(await f.read(), cb);
     } catch (e) {
       failed++;
-      warnings.push(`No se pudo leer ${f.name}: ${e.message}`);
+      fail(`No se pudo leer ${f.name}: ${e.message}`);
     }
     done += f.size || 0;
     onProgress(done / total);
@@ -407,22 +420,102 @@ export async function readLevelDb(files, { wantKey = () => true, onProgress = ()
     try {
       for (const rec of logRecords(await f.read())) {
         try {
-          readWriteBatch(rec, put);
+          readWriteBatch(rec, cb);
         } catch {
-          // registro dañado: se ignora
+          // registro dañado: se ignora (LevelDB también lo descarta al abrir)
         }
       }
     } catch (e) {
-      warnings.push(`No se pudo leer ${f.name}: ${e.message}`);
+      fail(`No se pudo leer ${f.name}: ${e.message}`);
     }
     done += f.size || 0;
     onProgress(done / total);
   }
 
-  if (tables.length + logs.length === 0) throw new Error('La carpeta db/ no contiene datos de LevelDB.');
   if (tables.length && failed === tables.length) throw new Error('No se pudo leer ninguna tabla de la base de datos.');
+  return { warnings, maxSeq, maxFileNumber, manifest };
+}
 
+/**
+ * Lee la base de datos y devuelve Map<claveComoTexto, Uint8Array> con los
+ * valores actuales de las claves que acepte `wantKey(keyBytes)`.
+ */
+export async function readLevelDb(files, { wantKey = () => true, onProgress = () => {} } = {}) {
+  const entries = new Map();
+  const onEntry = (key, seq, value) => {
+    if (!wantKey(key)) return;
+    const k = keyToString(key);
+    const prev = entries.get(k);
+    if (prev && prev.seq > seq) return;
+    entries.set(k, { seq, value: value ? value.slice() : null });
+  };
+  const { warnings } = await scanLevelDb(files, { onEntry, onProgress });
   const result = new Map();
   for (const [k, { value }] of entries) if (value) result.set(k, value);
   return { entries: result, warnings };
+}
+
+// ---------- escritura de un .log con borrados ----------
+
+function putVarint(out, v) {
+  while (v >= 0x80) {
+    out.push((v % 128) | 0x80);
+    v = Math.floor(v / 128);
+  }
+  out.push(v);
+}
+
+function maskCrc(crc) {
+  return ((((crc >>> 15) | (crc << 17)) >>> 0) + 0xa282ead8) >>> 0;
+}
+
+/** WriteBatch con borrados de `keys` (Array<Uint8Array>) empezando en `seq`. */
+export function deletionBatch(keys, seq) {
+  const head = new Uint8Array(12);
+  const dv = new DataView(head.buffer);
+  dv.setUint32(0, seq % 4294967296, true);
+  dv.setUint32(4, Math.floor(seq / 4294967296), true);
+  dv.setUint32(8, keys.length, true);
+  const parts = [head];
+  for (const k of keys) {
+    const pre = [0];
+    putVarint(pre, k.length);
+    parts.push(Uint8Array.from(pre), k);
+  }
+  return concat(parts);
+}
+
+/** Empaqueta registros en el formato de fichero .log de LevelDB (bloques de 32 KiB). */
+export function encodeLog(records) {
+  const out = [];
+  let blockPos = 0;
+  for (const data of records) {
+    let pos = 0;
+    let first = true;
+    do {
+      const left = LOG_BLOCK - blockPos;
+      if (left < 7) {
+        out.push(new Uint8Array(left));
+        blockPos = 0;
+        continue;
+      }
+      const avail = left - 7;
+      const len = Math.min(avail, data.length - pos);
+      const last = pos + len === data.length;
+      const type = first && last ? 1 : first ? 2 : last ? 4 : 3;
+      const rec = new Uint8Array(7 + len);
+      rec[4] = len & 0xff;
+      rec[5] = len >> 8;
+      rec[6] = type;
+      rec.set(data.subarray(pos, pos + len), 7);
+      const crc = maskCrc(crc32c(rec, 6, 7 + len));
+      new DataView(rec.buffer).setUint32(0, crc, true);
+      out.push(rec);
+      blockPos += 7 + len;
+      if (blockPos === LOG_BLOCK) blockPos = 0;
+      pos += len;
+      first = false;
+    } while (pos < data.length);
+  }
+  return concat(out);
 }

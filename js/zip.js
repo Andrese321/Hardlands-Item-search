@@ -54,7 +54,11 @@ export async function openZip(blob) {
   let p = 0;
   for (let i = 0; i < count && p + 46 <= cd.length; i++) {
     if (cv.getUint32(p, true) !== 0x02014b50) break;
+    const flags = cv.getUint16(p + 8, true);
     const method = cv.getUint16(p + 10, true);
+    const time = cv.getUint16(p + 12, true);
+    const date = cv.getUint16(p + 14, true);
+    const crc = cv.getUint32(p + 16, true);
     let compSize = cv.getUint32(p + 20, true);
     let uncompSize = cv.getUint32(p + 24, true);
     const nameLen = cv.getUint16(p + 28, true);
@@ -78,19 +82,119 @@ export async function openZip(blob) {
     }
     p += 46 + nameLen + extraLen + commentLen;
     if (name.endsWith('/')) continue;
-    entries.push({ name, size: uncompSize, compSize, method, localOffset });
+    entries.push({ name, size: uncompSize, compSize, method, localOffset, flags, time, date, crc });
   }
 
-  async function read(entry) {
+  async function dataStart(entry) {
     const header = await readRange(blob, entry.localOffset, entry.localOffset + 30);
     const hv = dv(header);
     if (hv.getUint32(0, true) !== 0x04034b50) throw new Error('ZIP dañado: ' + entry.name);
-    const start = entry.localOffset + 30 + hv.getUint16(26, true) + hv.getUint16(28, true);
+    return entry.localOffset + 30 + hv.getUint16(26, true) + hv.getUint16(28, true);
+  }
+
+  // Datos comprimidos tal cual están en el ZIP (sin copiarlos a memoria).
+  async function raw(entry) {
+    const start = await dataStart(entry);
+    return blob.slice(start, start + entry.compSize);
+  }
+
+  async function read(entry) {
+    const start = await dataStart(entry);
     const data = await readRange(blob, start, start + entry.compSize);
     if (entry.method === 0) return data;
     if (entry.method === 8) return entry.size > 0 ? inflateSync(data, { out: new Uint8Array(entry.size) }) : inflateSync(data);
     throw new Error('Método de compresión ZIP no soportado (' + entry.method + ') en ' + entry.name);
   }
 
-  return { entries, read };
+  return { entries, read, raw };
+}
+
+// ---------------------------------------------------------------- escritura
+
+let CRC32_TABLE;
+export function crc32(bytes) {
+  if (!CRC32_TABLE) {
+    CRC32_TABLE = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      CRC32_TABLE[i] = c >>> 0;
+    }
+  }
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(d = new Date()) {
+  return {
+    time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+    date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+  };
+}
+
+/** Fichero nuevo, guardado sin comprimir. */
+export function storedEntry(name, bytes) {
+  const { time, date } = dosDateTime();
+  return { name, data: bytes, method: 0, crc: crc32(bytes), size: bytes.length, compSize: bytes.length, flags: 0, time, date };
+}
+
+/**
+ * Crea un ZIP como Blob. Cada entrada lleva `data` (Blob o Uint8Array) ya
+ * comprimida según `method`, con su crc y tamaños. Los Blob originales no se
+ * copian a memoria: el navegador los encadena.
+ */
+export function buildZip(entries) {
+  const enc = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name);
+    const flags = (e.flags & ~0x0008) | 0x0800; // sin descriptor de datos; nombre en UTF-8
+    const lh = new Uint8Array(30 + name.length);
+    const lv = dv(lh);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, flags, true);
+    lv.setUint16(8, e.method, true);
+    lv.setUint16(10, e.time, true);
+    lv.setUint16(12, e.date, true);
+    lv.setUint32(14, e.crc, true);
+    lv.setUint32(18, e.compSize, true);
+    lv.setUint32(22, e.size, true);
+    lv.setUint16(26, name.length, true);
+    lh.set(name, 30);
+
+    const ch = new Uint8Array(46 + name.length);
+    const cv = dv(ch);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, flags, true);
+    cv.setUint16(10, e.method, true);
+    cv.setUint16(12, e.time, true);
+    cv.setUint16(14, e.date, true);
+    cv.setUint32(16, e.crc, true);
+    cv.setUint32(20, e.compSize, true);
+    cv.setUint32(24, e.size, true);
+    cv.setUint16(28, name.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+
+    parts.push(lh, e.data);
+    offset += lh.length + e.compSize;
+    if (offset > 0xffffffff || e.size > 0xffffffff) throw new Error('El mundo es demasiado grande (más de 4 GB) para crear el archivo.');
+  }
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const end = new Uint8Array(22);
+  const ev = dv(end);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, entries.length, true);
+  ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+  if (entries.length > 0xffff) throw new Error('El mundo tiene demasiados ficheros para crear el archivo.');
+  return new Blob([...parts, ...central, end], { type: 'application/zip' });
 }

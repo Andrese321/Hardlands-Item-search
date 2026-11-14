@@ -3,3 +3,5 @@ node_modules/
 __pycache__/
 *.png.tmp
 shot-*.png
+.test-output/
+/*.png

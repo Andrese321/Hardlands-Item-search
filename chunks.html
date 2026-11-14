@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hardlands · Borrar chunks</title>
+  <meta name="description" content="Borra chunks de un mundo de Minecraft Bedrock para que se regeneren, desde el móvil.">
+  <meta name="theme-color" content="#1f6f3a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <img src="icons/icon.svg" alt="" width="28" height="28">
+    <div>
+      <h1>Hardlands</h1>
+      <p>Borrar chunks · Minecraft Bedrock</p>
+    </div>
+  </header>
+  <nav class="appnav">
+    <a href="./">Buscar objetos</a>
+    <a href="chunks.html" aria-current="page">Borrar chunks</a>
+  </nav>
+
+  <main>
+    <section id="screen-load" class="screen">
+      <div class="card">
+        <h2>Borrar chunks</h2>
+        <p class="muted">Elige zonas del mundo para borrarlas. Minecraft las <strong>vuelve a generar</strong> desde la semilla cuando alguien se acerca (terreno nuevo, estructuras y minerales nuevos).</p>
+        <p class="muted">Tu archivo <strong>no se modifica</strong>: se crea una copia nueva para descargar. Todo ocurre en tu dispositivo.</p>
+        <label class="btn primary file-btn">
+          <input id="input-zip" type="file" accept=".mcworld,.zip,application/zip,application/octet-stream">
+          Abrir archivo .mcworld o .zip
+        </label>
+        <label class="btn file-btn">
+          <input id="input-folder" type="file" webkitdirectory directory multiple>
+          Abrir carpeta del mundo
+        </label>
+      </div>
+      <details class="card help">
+        <summary>¿Cómo se usa con un servidor?</summary>
+        <ol>
+          <li><strong>Apaga el servidor</strong> (o al menos haz una copia de seguridad reciente). Los chunks que están cargados en un servidor encendido no se pueden borrar desde fuera: el servidor los volvería a guardar.</li>
+          <li>Descarga el mundo (copia de seguridad .zip del hosting, la carpeta <code>worlds/&lt;mundo&gt;</code> de un BDS o un .mcworld).</li>
+          <li>Ábrelo aquí, marca las zonas y descarga el mundo modificado.</li>
+          <li>Sube el mundo modificado al servidor (restaurar copia de seguridad, o reemplazar la carpeta del mundo) y enciéndelo.</li>
+        </ol>
+        <p class="muted"><strong>Realm:</strong> importa el .mcworld modificado en Minecraft (ábrelo con Minecraft) y en los ajustes del Realm usa <em>Reemplazar mundo</em>.</p>
+      </details>
+    </section>
+
+    <section id="screen-progress" class="screen" hidden>
+      <div class="card">
+        <h2>Un momento…</h2>
+        <p id="progress-status" class="muted">Preparando…</p>
+        <div class="bar"><div id="progress-bar"></div></div>
+      </div>
+    </section>
+
+    <section id="screen-choose" class="screen" hidden>
+      <div class="card">
+        <h2>Hay varios mundos</h2>
+        <p class="muted">¿Cuál quieres editar?</p>
+        <div id="world-list" class="stack"></div>
+      </div>
+    </section>
+
+    <section id="screen-edit" class="screen" hidden>
+      <div class="worldbar">
+        <div>
+          <strong id="world-name"></strong>
+          <span id="world-stats" class="muted small"></span>
+        </div>
+        <button id="btn-change" class="btn small">Cambiar mundo</button>
+      </div>
+
+      <div class="filters">
+        <select id="dim" aria-label="Dimensión">
+          <option value="0">Mundo normal</option>
+          <option value="1">Nether</option>
+          <option value="2">End</option>
+        </select>
+      </div>
+
+      <div class="card map-card">
+        <div class="map-wrap">
+          <canvas id="map" aria-label="Mapa de chunks"></canvas>
+          <div class="map-buttons">
+            <button id="zoom-in" class="btn small" aria-label="Acercar">+</button>
+            <button id="zoom-out" class="btn small" aria-label="Alejar">−</button>
+            <button id="zoom-fit" class="btn small">Ajustar</button>
+          </div>
+        </div>
+        <p id="map-hint" class="small muted">Toca el mapa en dos esquinas para marcar una zona. Arrastra para moverte.</p>
+        <div class="legend small">
+          <span><i class="sw sw-chunk"></i>Chunk generado</span>
+          <span><i class="sw sw-chest"></i>Con cofres u objetos</span>
+          <span><i class="sw sw-del"></i>Se borrará</span>
+          <span><i class="sw sw-player"></i>Jugador</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Zonas</h2>
+        <p class="small muted">Coordenadas en bloques (las de F3 / «Mostrar coordenadas»). Se incluye todo chunk que toque la zona.</p>
+        <form id="form-rect" class="grid4">
+          <label>X1<input name="x1" type="number" inputmode="numeric" required></label>
+          <label>Z1<input name="z1" type="number" inputmode="numeric" required></label>
+          <label>X2<input name="x2" type="number" inputmode="numeric" required></label>
+          <label>Z2<input name="z2" type="number" inputmode="numeric" required></label>
+          <button class="btn small span4">Añadir zona rectangular</button>
+        </form>
+        <form id="form-radius" class="grid4">
+          <label>X<input name="x" type="number" inputmode="numeric" required></label>
+          <label>Z<input name="z" type="number" inputmode="numeric" required></label>
+          <label class="span2">Radio (bloques)<input name="r" type="number" inputmode="numeric" min="1" required></label>
+          <button class="btn small span4">Añadir zona alrededor de un punto</button>
+        </form>
+        <ul id="zones" class="zones"></ul>
+      </div>
+
+      <div class="card">
+        <h2>¿Qué borrar?</h2>
+        <label class="radio"><input type="radio" name="mode" value="inside" checked><span>Borrar los chunks <strong>dentro</strong> de las zonas</span></label>
+        <label class="radio"><input type="radio" name="mode" value="outside"><span>Borrar <strong>todo lo de fuera</strong> (las zonas se conservan: útil para reiniciar el mapa salvo las bases)</span></label>
+        <div id="summary" class="summary"></div>
+        <label class="radio"><input id="confirm" type="checkbox"><span>Tengo guardada una copia del mundo original</span></label>
+        <button id="btn-build" class="btn primary" disabled>Crear mundo modificado</button>
+      </div>
+
+      <div id="result" class="card" hidden></div>
+    </section>
+
+    <div id="error" class="card error" hidden>
+      <strong>Algo salió mal</strong>
+      <p id="error-text"></p>
+      <button id="btn-error" class="btn">Volver</button>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="js/chunks-app.js"></script>
+</body>
+</html>
