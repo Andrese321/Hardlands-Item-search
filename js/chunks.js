@@ -8,9 +8,9 @@
 //
 // El resto de ficheros se copian sin tocar, así que el riesgo es mínimo.
 
-import { scanLevelDb, deletionBatch, encodeLog, logRecords, keyToString } from './leveldb.js';
+import { scanLevelDb, keyToString } from './leveldb.js';
+import { buildWorldWithDeletions } from './edit.js';
 import { readNbt, readNbtList } from './nbt.js';
-import { buildZip, storedEntry } from './zip.js';
 
 // Etiquetas de registros de chunk (Data3D=43 ... ActorDigestVersion=65, LegacyVersion=118).
 const MIN_TAG = 43;
@@ -220,53 +220,13 @@ export function keysForChunks(analysis, chunks) {
   return { keys, actors };
 }
 
-/** Fichero .log con los borrados (en lotes para no crear uno gigante). */
-export function buildDeletionLog(keys, firstSeq) {
-  const BATCH = 20000;
-  const batches = [];
-  for (let i = 0; i < keys.length; i += BATCH) batches.push(deletionBatch(keys.slice(i, i + BATCH), firstSeq + i));
-  return encodeLog(batches);
-}
-
-/** Comprueba que el .log generado se lee y contiene exactamente esos borrados. */
-export function verifyDeletionLog(log, keys) {
-  let count = 0;
-  for (const rec of logRecords(log)) count += new DataView(rec.buffer, rec.byteOffset + 8, 4).getUint32(0, true);
-  if (count !== keys.length) throw new Error('Comprobación fallida del registro de borrado.');
-}
-
-export function newLogName(analysis) {
-  const next = Math.max(analysis.maxFileNumber + 1, analysis.manifest?.nextFile || 0);
-  return String(next).padStart(6, '0') + '.log';
-}
-
 /**
  * Crea el mundo modificado como Blob ZIP con todo lo original más el .log de borrado.
  * @param source { kind:'zip', zip } (de openZip) o { kind:'folder', files:[{path, file}] }
  */
-export async function buildEditedWorld(source, prefix, analysis, chunks, { onProgress = () => {} } = {}) {
+export async function buildEditedWorld(source, prefix, analysis, chunks, opts = {}) {
   const { keys, actors } = keysForChunks(analysis, chunks);
   if (!keys.length) throw new Error('No hay chunks que borrar con esa selección.');
-  const log = buildDeletionLog(keys, analysis.maxSeq + 1);
-  verifyDeletionLog(log, keys);
-  const logPath = prefix + 'db/' + newLogName(analysis);
-
-  const entries = [];
-  if (source.kind === 'zip') {
-    for (const e of source.zip.entries) {
-      if (e.name === logPath) throw new Error('Conflicto de nombres al crear el registro de borrado.');
-      entries.push({ ...e, data: await source.zip.raw(e) });
-    }
-  } else {
-    let i = 0;
-    for (const { path, file } of source.files) {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const e = storedEntry(path, bytes);
-      e.data = file; // el navegador lee el File al guardar, sin duplicarlo en memoria
-      entries.push(e);
-      onProgress(++i / source.files.length);
-    }
-  }
-  entries.push(storedEntry(logPath, log));
-  return { blob: buildZip(entries), keys: keys.length, actors, logPath };
+  const out = await buildWorldWithDeletions(source, prefix, analysis, keys, opts);
+  return { ...out, actors };
 }

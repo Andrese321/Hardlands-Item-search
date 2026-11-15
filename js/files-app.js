@@ -19,7 +19,10 @@ function h(tag, props = {}, ...children) {
   return el;
 }
 
-const state = { worker: null, files: [], structures: [], names: { items: {} }, archiveName: 'mundo', worldName: '' };
+const state = {
+  worker: null, files: [], structures: [], names: { items: {} }, archiveName: 'mundo', ext: '.zip', worldName: '',
+  selected: new Set(), canEdit: false, deleting: false, downloadUrl: null,
+};
 
 function size(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -71,7 +74,11 @@ function startWorker() {
     else if (data.type === 'choose') chooseWorld(data.worlds);
     else if (data.type === 'scanned') onScanned(data);
     else if (data.type === 'download') saveBlob(data.blob, data.name);
-    else if (data.type === 'error') showError(data.message);
+    else if (data.type === 'deleted') onDeleted(data);
+    else if (data.type === 'error') {
+      if (state.deleting) deleteFailed(data.message);
+      else showError(data.message);
+    }
   };
   w.onerror = (e) => showError('Error interno: ' + (e.message || 'el navegador no pudo ejecutar la herramienta.'));
   state.worker = w;
@@ -89,6 +96,7 @@ $('input-zip').addEventListener('change', (e) => {
   e.target.value = '';
   if (!f) return;
   state.archiveName = f.name.replace(/\.[^.]+$/, '') || 'mundo';
+  state.ext = /\.mcworld$/i.test(f.name) ? '.mcworld' : '.zip';
   progressScreen();
   startWorker().postMessage({ type: 'open', zip: f });
 });
@@ -98,6 +106,7 @@ $('input-folder').addEventListener('change', (e) => {
   e.target.value = '';
   if (!files.length) return;
   state.archiveName = (files[0].webkitRelativePath || '').split('/')[0] || 'mundo';
+  state.ext = '.zip';
   progressScreen();
   startWorker().postMessage({ type: 'open', files });
 });
@@ -119,6 +128,10 @@ function chooseWorld(worlds) {
 
 function onScanned(data) {
   state.structures = data.structures;
+  state.canEdit = data.canEdit;
+  state.selected = new Set();
+  $('delete-result').hidden = true;
+  $('delete-confirm').checked = false;
   state.worldName = data.worldName || state.archiveName;
   $('world-name').textContent = state.worldName;
   const total = state.files.reduce((s, f) => s + f.size, 0);
@@ -161,9 +174,24 @@ function renderStructures() {
     } else {
       lines.push(h('div', { class: 'danger' }, 'No se pudo leer: ' + s.error));
     }
-    return h('div', { class: 'card structure' },
+    const check = state.canEdit
+      ? h('input', {
+        type: 'checkbox',
+        class: 'pick',
+        'aria-label': 'Marcar ' + s.id + ' para borrar',
+        onchange: (e) => {
+          if (e.target.checked) state.selected.add(index);
+          else state.selected.delete(index);
+          e.target.closest('.structure').classList.toggle('picked', e.target.checked);
+          updateDelete();
+        },
+      })
+      : null;
+    if (check && state.selected.has(index)) check.checked = true;
+    return h('div', { class: 'card structure' + (state.selected.has(index) ? ' picked' : '') },
       h('div', { class: 'structure-head' },
-        h('div', {},
+        check,
+        h('div', { class: 'grow' },
           h('h3', {}, s.id),
           h('div', { class: 'small muted' }, s.source === 'world' ? 'Guardada en el mundo' : 'En un pack: ' + s.path)),
         h('button', {
@@ -180,6 +208,75 @@ function renderStructures() {
     }, `Descargar todas (${ss.length}) en un .zip`)
     : null;
   list.replaceChildren(...(all ? [all] : []), ...cards);
+  updateDelete();
+}
+
+// ---------------------------------------------------------------- borrar estructuras
+
+function updateDelete() {
+  const panel = $('delete-panel');
+  panel.hidden = !state.structures.length || !state.canEdit;
+  const chosen = [...state.selected].map((i) => state.structures[i]);
+  const packs = chosen.filter((s) => s.source === 'pack').length;
+  const summary = $('delete-summary');
+  if (!chosen.length) {
+    summary.replaceChildren('Marca una o más estructuras en la lista de arriba.');
+  } else {
+    summary.replaceChildren(
+      h('div', {}, 'Se borrarán ', h('strong', {}, String(chosen.length)), ` de ${state.structures.length} estructuras: ` + chosen.map((s) => s.id).join(', ') + '.'),
+      packs ? h('div', { class: 'small' }, `${packs === 1 ? '1 está' : `${packs} están`} dentro de un pack: se quita el archivo .mcstructure del pack en la copia.`) : null,
+    );
+  }
+  $('btn-delete').disabled = !(chosen.length && $('delete-confirm').checked);
+}
+
+function setAll(on) {
+  state.selected = on ? new Set(state.structures.map((_, i) => i)) : new Set();
+  renderStructures();
+}
+
+$('sel-all').addEventListener('click', () => setAll(true));
+$('sel-none').addEventListener('click', () => setAll(false));
+$('delete-confirm').addEventListener('change', updateDelete);
+
+$('btn-delete').addEventListener('click', () => {
+  const indices = [...state.selected].sort((a, b) => a - b);
+  const names = indices.map((i) => state.structures[i].id);
+  if (!window.confirm(`Se creará una copia del mundo sin ${names.length === 1 ? 'esta estructura' : `estas ${names.length} estructuras`}:\n\n` +
+    names.join('\n') + '\n\nEl archivo original no se toca. ¿Continuar?')) return;
+  state.deleting = true;
+  progressScreen();
+  state.worker.postMessage({ type: 'delete', indices });
+});
+
+function deleteFailed(message) {
+  state.deleting = false;
+  show('screen-files');
+  const r = $('delete-result');
+  r.hidden = false;
+  r.replaceChildren(h('strong', { class: 'danger' }, 'No se pudo crear la copia: '), message);
+}
+
+function onDeleted(data) {
+  state.deleting = false;
+  show('screen-files');
+  if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
+  state.downloadUrl = URL.createObjectURL(data.blob);
+  const name = `${state.archiveName}-sin-estructuras${state.ext}`;
+  const r = $('delete-result');
+  r.hidden = false;
+  r.replaceChildren(
+    h('h2', {}, 'Copia del mundo lista'),
+    h('p', {}, `Sin ${data.names.length === 1 ? 'la estructura' : `las ${data.names.length} estructuras`}: ${data.names.join(', ')}. ` +
+      `Archivo: ${size(data.blob.size)}.`),
+    h('a', { class: 'btn primary', href: state.downloadUrl, download: name }, 'Descargar ' + name),
+    h('ol', { class: 'result-steps' },
+      h('li', {}, 'Con el servidor apagado, sube este archivo como copia de seguridad a restaurar (o reemplaza la carpeta del mundo).'),
+      h('li', {}, 'Al abrir el mundo, Minecraft aplica el borrado: esas estructuras ya no aparecerán en el bloque de estructuras ni en /structure load.'),
+      h('li', {}, 'Las construcciones que ya estén puestas en el mapa no se tocan: solo se borra la plantilla guardada.')),
+  );
+  r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('Copia del mundo lista para descargar');
 }
 
 // ---------------------------------------------------------------- árbol de archivos

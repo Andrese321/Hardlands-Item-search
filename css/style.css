@@ -356,3 +356,7 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .appnav a { padding: 8px 6px; font-size: 0.85rem; }
 .stack { grid-template-columns: minmax(0, 1fr); }
 .structure, .structure-head > div { min-width: 0; overflow-wrap: anywhere; }
+.structure-head .grow { flex: 1; min-width: 0; }
+.structure .pick { width: 22px; height: 22px; margin-top: 2px; flex: none; accent-color: var(--map-del); }
+.structure.picked { border-color: var(--map-del); box-shadow: inset 3px 0 0 var(--map-del); }
+.row-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }

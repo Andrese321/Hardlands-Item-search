@@ -75,6 +75,18 @@
 
       <div id="tab-structures">
         <div id="structures" class="stack"></div>
+        <div id="delete-panel" class="card" hidden>
+          <h2>Borrar estructuras</h2>
+          <p class="small muted">Marca las estructuras que quieres quitar del mundo. Se crea una <strong>copia del mundo</strong> sin ellas; tu archivo original no se toca.</p>
+          <div class="row-buttons">
+            <button id="sel-all" class="btn small">Marcar todas</button>
+            <button id="sel-none" class="btn small">Desmarcar todas</button>
+          </div>
+          <div id="delete-summary" class="summary"></div>
+          <label class="radio"><input id="delete-confirm" type="checkbox"><span>Tengo guardada una copia del mundo original</span></label>
+          <button id="btn-delete" class="btn danger" disabled>Borrar y crear copia del mundo</button>
+        </div>
+        <div id="delete-result" class="card" hidden></div>
         <details class="card help">
           <summary>¿Cómo uso un .mcstructure en el móvil?</summary>
           <ul>

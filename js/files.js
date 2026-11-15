@@ -63,7 +63,7 @@ export function structureFileName(id, used = new Set()) {
 
 /**
  * Busca las estructuras guardadas en la base de datos del mundo.
- * @returns Array<{ id, file, bytes, info|null, error|null }>
+ * @returns { structures: Array<{ id, key, file, bytes, info|null, error|null }>, warnings, scan }
  */
 export async function findStructures(dbFiles, { onProgress = () => {} } = {}) {
   const latest = new Map(); // id -> { seq, value }
@@ -71,12 +71,12 @@ export async function findStructures(dbFiles, { onProgress = () => {} } = {}) {
     if (!isStructureKey(key)) return;
     const id = utf8.decode(key.subarray(PREFIX_BYTES.length));
     const prev = latest.get(id);
-    if (!prev || prev.seq < seq) latest.set(id, { seq, value: value ? value.slice() : null });
+    if (!prev || prev.seq < seq) latest.set(id, { seq, key: key.slice(), value: value ? value.slice() : null });
   };
-  const { warnings } = await scanLevelDb(dbFiles, { onEntry, onProgress });
+  const scan = await scanLevelDb(dbFiles, { onEntry, onProgress });
   const used = new Set();
   const out = [];
-  for (const [id, { value }] of [...latest.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [id, { key, value }] of [...latest.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     if (!value) continue; // borrada
     let info = null;
     let error = null;
@@ -85,9 +85,10 @@ export async function findStructures(dbFiles, { onProgress = () => {} } = {}) {
     } catch (e) {
       error = e.message;
     }
-    out.push({ id, file: structureFileName(id, used), bytes: value, info, error });
+    out.push({ id, key, file: structureFileName(id, used), bytes: value, info, error });
   }
-  return { structures: out, warnings };
+  // `scan` (secuencia y ficheros) hace falta para crear una copia con borrados.
+  return { structures: out, warnings: scan.warnings, scan };
 }
 
 /** Árbol de carpetas a partir de una lista de rutas. */

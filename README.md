@@ -38,10 +38,14 @@ Tercera herramienta, en la pestaña **Archivos**:
   de datos del mundo y en el móvil no se pueden exportar. Para cada una muestra el tamaño, los
   bloques principales y desde dónde se guardó. Se descargan una a una o todas en un .zip.
   También lista los `.mcstructure` que haya dentro de los packs del mundo.
+- **Borrar estructuras:** marca una, varias o todas y crea una **copia del mundo** sin ellas
+  (el original no se toca). Las guardadas en el mundo se borran con un registro de borrado de
+  LevelDB, igual que «Borrar chunks»; las de los packs se quitan de la copia. Las construcciones
+  ya puestas en el mapa no cambian: solo se borra la plantilla guardada.
 - **Todos los archivos:** explorador de carpetas del mundo (o de cualquier .zip/.mcpack/.mcaddon)
   para descargar cualquier archivo suelto.
 
-Solo lee: el mundo no se modifica.
+El mundo original nunca se modifica.
 
 ## Privacidad y seguridad
 
@@ -104,6 +108,7 @@ files.html              explorador de archivos y estructuras
 js/files.js             extracción de estructuras (.mcstructure) y árbol de archivos
 js/files-app.js         interfaz del explorador
 js/files-worker.js      trabajo pesado del explorador
+js/edit.js              copia del mundo con borrados (lo usan chunks y estructuras)
 data/names_es.json      nombres en español (sacados de los textos oficiales de Bedrock)
 vendor/fflate.js        descompresión (fflate 0.8.3, MIT)
 ```

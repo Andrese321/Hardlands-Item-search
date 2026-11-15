@@ -3,9 +3,14 @@
 import { openZip, buildZip, storedEntry } from './zip.js';
 import { findWorlds } from './world.js';
 import { findStructures, describeStructure, structureFileName } from './files.js';
+import { buildWorldWithDeletions } from './edit.js';
 
 let entries = []; // { path, size, read() }
-let structures = []; // { id, file, source, path?, bytes?, info, error }
+let structures = []; // { id, key?, file, source, path?, bytes?, info, error }
+let source = null; // { kind:'zip', zip } | { kind:'folder', files:[{path, file}] }
+let prefix = null; // carpeta del mundo dentro del archivo
+let scanInfo = null; // datos del escaneo para poder crear una copia con borrados
+let canEdit = false;
 
 const status = (text) => postMessage({ type: 'status', text });
 
@@ -13,12 +18,15 @@ async function open(data) {
   status('Abriendo archivo…');
   if (data.zip) {
     const zip = await openZip(data.zip);
+    source = { kind: 'zip', zip };
     entries = zip.entries.map((e) => ({ path: e.name, size: e.size, read: () => zip.read(e) }));
   } else {
-    entries = data.files.map((f) => ({
-      path: (f.webkitRelativePath || f.name).replace(/\\/g, '/'),
-      size: f.size,
-      read: async () => new Uint8Array(await f.arrayBuffer()),
+    const files = data.files.map((f) => ({ path: (f.webkitRelativePath || f.name).replace(/\\/g, '/'), file: f }));
+    source = { kind: 'folder', files };
+    entries = files.map(({ path, file }) => ({
+      path,
+      size: file.size,
+      read: async () => new Uint8Array(await file.arrayBuffer()),
     }));
   }
   postMessage({ type: 'files', files: entries.map(({ path, size }) => ({ path, size })) });
@@ -27,7 +35,10 @@ async function open(data) {
   else await scan(worlds[0] ?? null);
 }
 
-async function scan(prefix) {
+async function scan(worldPrefix) {
+  prefix = worldPrefix;
+  scanInfo = null;
+  canEdit = false;
   structures = [];
   const warnings = [];
   let worldName = '';
@@ -50,6 +61,9 @@ async function scan(prefix) {
       const res = await findStructures(db, { onProgress: (value) => postMessage({ type: 'progress', value }) });
       warnings.push(...res.warnings);
       structures = res.structures.map((s) => ({ ...s, source: 'world' }));
+      scanInfo = res.scan;
+      // Solo se permite borrar si la base de datos se ha leído entera y sin errores.
+      canEdit = !res.warnings.length && !!res.scan.manifest;
     } catch (e) {
       warnings.push('No se pudo leer la base de datos del mundo: ' + e.message);
     }
@@ -74,7 +88,8 @@ async function scan(prefix) {
     type: 'scanned',
     worldName,
     warnings,
-    structures: structures.map(({ bytes, ...rest }) => rest),
+    canEdit: canEdit || prefix === null,
+    structures: structures.map(({ bytes, key, ...rest }) => rest),
   });
 }
 
@@ -105,6 +120,18 @@ self.onmessage = async ({ data }) => {
         files.push(storedEntry(folder + s.file, await structureBytes(s)));
       }
       postMessage({ type: 'download', name: `${data.name || 'estructuras'}.zip`, blob: buildZip(files) });
+    } else if (data.type === 'delete') {
+      const chosen = data.indices.map((i) => structures[i]).filter(Boolean);
+      if (!chosen.length) throw new Error('No hay estructuras seleccionadas.');
+      status('Creando la copia del mundo…');
+      const keys = chosen.filter((s) => s.source === 'world').map((s) => s.key);
+      if (keys.length && !canEdit) throw new Error('No se puede editar este mundo: su base de datos no se pudo leer entera.');
+      const skipPaths = new Set(chosen.filter((s) => s.source === 'pack').map((s) => s.path));
+      const out = await buildWorldWithDeletions(source, prefix ?? '', scanInfo ?? { maxSeq: 0, maxFileNumber: 0 }, keys, {
+        skipPaths,
+        onProgress: (value) => postMessage({ type: 'progress', value }),
+      });
+      postMessage({ type: 'deleted', blob: out.blob, world: keys.length, packs: skipPaths.size, names: chosen.map((s) => s.id) });
     }
   } catch (e) {
     postMessage({ type: 'error', message: e?.message || String(e) });
