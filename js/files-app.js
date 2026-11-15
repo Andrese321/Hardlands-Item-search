@@ -1,3 +1,4 @@
+import './version.js';
 import { buildTree } from './files.js';
 import { itemLabel } from './search.js';
 
@@ -21,7 +22,7 @@ function h(tag, props = {}, ...children) {
 
 const state = {
   worker: null, files: [], structures: [], names: { items: {} }, archiveName: 'mundo', ext: '.zip', worldName: '',
-  selected: new Set(), canEdit: false, deleting: false, downloadUrl: null,
+  selected: new Set(), canEdit: false, editBlocked: '', deleting: false, downloadUrl: null,
 };
 
 function size(bytes) {
@@ -129,6 +130,7 @@ function chooseWorld(worlds) {
 function onScanned(data) {
   state.structures = data.structures;
   state.canEdit = data.canEdit;
+  state.editBlocked = data.editBlocked || '';
   state.selected = new Set();
   $('delete-result').hidden = true;
   $('delete-confirm').checked = false;
@@ -174,7 +176,8 @@ function renderStructures() {
     } else {
       lines.push(h('div', { class: 'danger' }, 'No se pudo leer: ' + s.error));
     }
-    const check = state.canEdit
+    const blocked = !state.canEdit && s.source === 'world';
+    const check = !blocked
       ? h('input', {
         type: 'checkbox',
         class: 'pick',
@@ -215,7 +218,10 @@ function renderStructures() {
 
 function updateDelete() {
   const panel = $('delete-panel');
-  panel.hidden = !state.structures.length || !state.canEdit;
+  panel.hidden = !state.structures.length;
+  const reason = $('delete-blocked');
+  reason.hidden = state.canEdit;
+  reason.textContent = state.editBlocked || 'No se puede editar este mundo.';
   const chosen = [...state.selected].map((i) => state.structures[i]);
   const packs = chosen.filter((s) => s.source === 'pack').length;
   const summary = $('delete-summary');
@@ -231,7 +237,9 @@ function updateDelete() {
 }
 
 function setAll(on) {
-  state.selected = on ? new Set(state.structures.map((_, i) => i)) : new Set();
+  state.selected = on
+    ? new Set(state.structures.map((s, i) => (state.canEdit || s.source === 'pack' ? i : -1)).filter((i) => i >= 0))
+    : new Set();
   renderStructures();
 }
 

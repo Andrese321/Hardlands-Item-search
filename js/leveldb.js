@@ -365,6 +365,9 @@ export async function scanLevelDb(files, { onEntry, onProgress = () => {}, stric
       const name = new TextDecoder().decode(await current.read()).trim();
       const mf = byName.get(name);
       if (mf) manifest = parseManifest(await mf.read());
+      else fail(`Falta el fichero ${name} de la base de datos.`);
+    } else {
+      fail('Falta el fichero CURRENT de la base de datos.');
     }
   } catch (e) {
     manifest = null;

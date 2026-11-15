@@ -1,3 +1,4 @@
+import './version.js';
 import {
   prepare, search, groupByPlace, itemLabel, entityLabel, enchantLabel,
   DIMENSIONS, CONTAINERS, PLAYER_SECTIONS, EXACT,

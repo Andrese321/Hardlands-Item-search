@@ -11,6 +11,7 @@ let source = null; // { kind:'zip', zip } | { kind:'folder', files:[{path, file}
 let prefix = null; // carpeta del mundo dentro del archivo
 let scanInfo = null; // datos del escaneo para poder crear una copia con borrados
 let canEdit = false;
+let editBlocked = ''; // motivo por el que no se puede borrar
 
 const status = (text) => postMessage({ type: 'status', text });
 
@@ -39,6 +40,7 @@ async function scan(worldPrefix) {
   prefix = worldPrefix;
   scanInfo = null;
   canEdit = false;
+  editBlocked = '';
   structures = [];
   const warnings = [];
   let worldName = '';
@@ -64,8 +66,13 @@ async function scan(worldPrefix) {
       scanInfo = res.scan;
       // Solo se permite borrar si la base de datos se ha leído entera y sin errores.
       canEdit = !res.warnings.length && !!res.scan.manifest;
+      if (!canEdit) {
+        editBlocked = 'La base de datos del mundo no se pudo leer entera (' +
+          (res.warnings[0] || 'falta el MANIFEST') + '). Para no estropear el mundo, no se puede borrar nada de él.';
+      }
     } catch (e) {
       warnings.push('No se pudo leer la base de datos del mundo: ' + e.message);
+      editBlocked = 'No se pudo leer la base de datos del mundo: ' + e.message;
     }
   }
 
@@ -89,6 +96,7 @@ async function scan(worldPrefix) {
     worldName,
     warnings,
     canEdit: canEdit || prefix === null,
+    editBlocked,
     structures: structures.map(({ bytes, key, ...rest }) => rest),
   });
 }

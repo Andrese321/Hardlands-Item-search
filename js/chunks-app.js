@@ -1,3 +1,4 @@
+import './version.js';
 import { inZones, blocksToChunkZone } from './chunks.js';
 import { DIMENSIONS } from './search.js';
 

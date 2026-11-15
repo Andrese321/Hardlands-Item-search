@@ -1,8 +1,8 @@
 // Permite usar la app sin conexión una vez abierta (y que se pueda instalar).
-const CACHE = 'hardlands-v4';
+const CACHE = 'hardlands-v5';
 const FILES = [
   './', 'index.html', 'chunks.html', 'files.html', 'css/style.css', 'manifest.webmanifest',
-  'js/app.js', 'js/worker.js', 'js/chunks.js', 'js/chunks-app.js', 'js/chunks-worker.js', 'js/files.js', 'js/files-app.js', 'js/files-worker.js', 'js/edit.js', 'js/world.js', 'js/leveldb.js', 'js/nbt.js', 'js/zip.js', 'js/search.js', 'js/storage.js',
+  'js/app.js', 'js/worker.js', 'js/chunks.js', 'js/chunks-app.js', 'js/chunks-worker.js', 'js/files.js', 'js/files-app.js', 'js/files-worker.js', 'js/edit.js', 'js/version.js', 'js/world.js', 'js/leveldb.js', 'js/nbt.js', 'js/zip.js', 'js/search.js', 'js/storage.js',
   'vendor/fflate.js', 'data/names_es.json', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
@@ -23,7 +23,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    // no-cache: pregunta siempre al servidor si hay versión nueva (sin esperar a la caché del navegador)
+    fetch(e.request, { cache: 'no-cache' })
       .then(async (res) => {
         if (!res.ok) return (await caches.match(e.request, { ignoreSearch: true })) || res;
         const copy = res.clone();

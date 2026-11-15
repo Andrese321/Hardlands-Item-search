@@ -360,3 +360,4 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .structure .pick { width: 22px; height: 22px; margin-top: 2px; flex: none; accent-color: var(--map-del); }
 .structure.picked { border-color: var(--map-del); box-shadow: inset 3px 0 0 var(--map-del); }
 .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.version { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); }
