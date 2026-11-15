@@ -1,8 +1,8 @@
 // Permite usar la app sin conexión una vez abierta (y que se pueda instalar).
-const CACHE = 'hardlands-v2';
+const CACHE = 'hardlands-v3';
 const FILES = [
-  './', 'index.html', 'chunks.html', 'css/style.css', 'manifest.webmanifest',
-  'js/app.js', 'js/worker.js', 'js/chunks.js', 'js/chunks-app.js', 'js/chunks-worker.js', 'js/world.js', 'js/leveldb.js', 'js/nbt.js', 'js/zip.js', 'js/search.js', 'js/storage.js',
+  './', 'index.html', 'chunks.html', 'files.html', 'css/style.css', 'manifest.webmanifest',
+  'js/app.js', 'js/worker.js', 'js/chunks.js', 'js/chunks-app.js', 'js/chunks-worker.js', 'js/files.js', 'js/files-app.js', 'js/files-worker.js', 'js/world.js', 'js/leveldb.js', 'js/nbt.js', 'js/zip.js', 'js/search.js', 'js/storage.js',
   'vendor/fflate.js', 'data/names_es.json', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 

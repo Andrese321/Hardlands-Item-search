@@ -329,3 +329,30 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .result-steps { padding-left: 20px; }
 .result-steps li { margin: 6px 0; }
+
+/* ---------- archivos y estructuras ---------- */
+.danger { color: var(--error); }
+.structure h3 { margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.structure-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.structure-info { margin: 8px 0 4px; display: grid; gap: 4px; }
+.tree-card { padding: 6px 4px; }
+.dir > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-radius: 8px;
+  list-style: none;
+}
+.dir > summary::-webkit-details-marker { display: none; }
+.dir > summary:hover { background: var(--surface-2); }
+.dir-body { padding-left: 14px; border-left: 1px solid var(--border); margin-left: 12px; }
+.files { list-style: none; margin: 0; padding: 0; }
+.file { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; }
+.file-name { min-width: 0; overflow-wrap: anywhere; font-size: 0.9rem; }
+.file-name .badge { margin-left: 6px; }
+.file-size { color: var(--muted); font-size: 0.8rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.appnav a { padding: 8px 6px; font-size: 0.85rem; }
+.stack { grid-template-columns: minmax(0, 1fr); }
+.structure, .structure-head > div { min-width: 0; overflow-wrap: anywhere; }

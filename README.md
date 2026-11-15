@@ -29,6 +29,20 @@ Uso con un servidor: **apágalo** (los chunks cargados en un servidor encendido 
 a guardar), descarga el mundo, edítalo aquí y súbelo como copia de seguridad a restaurar.
 En un Realm: abre el .mcworld con Minecraft y usa *Reemplazar mundo* en los ajustes del Realm.
 
+## Archivos y estructuras (`files.html`)
+
+Tercera herramienta, en la pestaña **Archivos**:
+
+- **Estructuras:** saca como archivos `.mcstructure` las estructuras guardadas con un bloque de
+  estructuras (modo «Guardar») o con `/structure save`. Minecraft las guarda dentro de la base
+  de datos del mundo y en el móvil no se pueden exportar. Para cada una muestra el tamaño, los
+  bloques principales y desde dónde se guardó. Se descargan una a una o todas en un .zip.
+  También lista los `.mcstructure` que haya dentro de los packs del mundo.
+- **Todos los archivos:** explorador de carpetas del mundo (o de cualquier .zip/.mcpack/.mcaddon)
+  para descargar cualquier archivo suelto.
+
+Solo lee: el mundo no se modifica.
+
 ## Privacidad y seguridad
 
 El mundo se lee **solo en tu dispositivo** (en el navegador). No se sube a ningún servidor
@@ -86,6 +100,10 @@ chunks.html             herramienta de borrar chunks
 js/chunks.js            análisis de chunks y creación del registro de borrado
 js/chunks-app.js        interfaz y mapa de la herramienta de chunks
 js/chunks-worker.js     trabajo pesado de la herramienta de chunks
+files.html              explorador de archivos y estructuras
+js/files.js             extracción de estructuras (.mcstructure) y árbol de archivos
+js/files-app.js         interfaz del explorador
+js/files-worker.js      trabajo pesado del explorador
 data/names_es.json      nombres en español (sacados de los textos oficiales de Bedrock)
 vendor/fflate.js        descompresión (fflate 0.8.3, MIT)
 ```

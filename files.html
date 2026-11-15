@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hardlands · Archivos y estructuras</title>
+  <meta name="description" content="Explora los archivos de un mundo de Minecraft Bedrock y extrae sus estructuras como .mcstructure.">
+  <meta name="theme-color" content="#1f6f3a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <img src="icons/icon.svg" alt="" width="28" height="28">
+    <div>
+      <h1>Hardlands</h1>
+      <p>Archivos y estructuras · Minecraft Bedrock</p>
+    </div>
+  </header>
+  <nav class="appnav">
+    <a href="./">Buscar objetos</a>
+    <a href="chunks.html">Borrar chunks</a>
+    <a href="files.html" aria-current="page">Archivos</a>
+  </nav>
+
+  <main>
+    <section id="screen-load" class="screen">
+      <div class="card">
+        <h2>Archivos del mundo</h2>
+        <p class="muted">Mira qué hay dentro de un mundo y descarga cualquier archivo. Saca las <strong>estructuras guardadas con el bloque de estructuras</strong> como archivos <code>.mcstructure</code>, algo que Minecraft no permite hacer desde el móvil.</p>
+        <p class="muted">Solo lectura: el mundo no se modifica y no se sube a ningún sitio.</p>
+        <label class="btn primary file-btn">
+          <input id="input-zip" type="file" accept=".mcworld,.zip,.mcpack,.mcaddon,application/zip,application/octet-stream">
+          Abrir archivo .mcworld o .zip
+        </label>
+        <label class="btn file-btn">
+          <input id="input-folder" type="file" webkitdirectory directory multiple>
+          Abrir carpeta del mundo
+        </label>
+      </div>
+    </section>
+
+    <section id="screen-progress" class="screen" hidden>
+      <div class="card">
+        <h2>Un momento…</h2>
+        <p id="progress-status" class="muted">Preparando…</p>
+        <div class="bar"><div id="progress-bar"></div></div>
+      </div>
+    </section>
+
+    <section id="screen-choose" class="screen" hidden>
+      <div class="card">
+        <h2>Hay varios mundos</h2>
+        <p class="muted">¿De cuál quieres sacar las estructuras?</p>
+        <div id="world-list" class="stack"></div>
+      </div>
+    </section>
+
+    <section id="screen-files" class="screen" hidden>
+      <div class="worldbar">
+        <div>
+          <strong id="world-name"></strong>
+          <span id="world-stats" class="muted small"></span>
+        </div>
+        <button id="btn-change" class="btn small">Cambiar</button>
+      </div>
+      <div id="warnings" class="warn" hidden></div>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-tab="structures" aria-selected="true">Estructuras</button>
+        <button role="tab" class="tab" data-tab="tree" aria-selected="false">Todos los archivos</button>
+      </nav>
+
+      <div id="tab-structures">
+        <div id="structures" class="stack"></div>
+        <details class="card help">
+          <summary>¿Cómo uso un .mcstructure en el móvil?</summary>
+          <ul>
+            <li><strong>En otro mundo con un pack:</strong> mete el archivo en la carpeta <code>structures</code> de un pack de comportamiento del mundo. Después, con un bloque de estructuras en modo <em>Cargar</em> o con <code>/structure load &lt;nombre&gt; ~ ~ ~</code>, la pegas donde quieras.</li>
+            <li><strong>En PC (Windows):</strong> el bloque de estructuras en modo <em>Cargar</em> tiene el botón <em>Importar</em> para abrir el .mcstructure directamente.</li>
+            <li><strong>Para editar o ver en 3D:</strong> sirve con programas como Amulet, o con webs de visualización de estructuras.</li>
+          </ul>
+        </details>
+      </div>
+
+      <div id="tab-tree" hidden>
+        <div class="card tree-card">
+          <div id="tree"></div>
+        </div>
+        <details class="card help">
+          <summary>¿Qué es cada cosa?</summary>
+          <ul>
+            <li><code>db/</code>: la base de datos del mundo (terreno, cofres, jugadores, estructuras guardadas…). Sus archivos no se pueden leer por separado.</li>
+            <li><code>level.dat</code>: ajustes del mundo (semilla, reglas, modo de juego…).</li>
+            <li><code>levelname.txt</code>: el nombre del mundo.</li>
+            <li><code>behavior_packs/</code> y <code>resource_packs/</code>: addons instalados en el mundo.</li>
+            <li><code>world_behavior_packs.json</code> / <code>world_resource_packs.json</code>: qué packs están activados.</li>
+            <li><code>world_icon.jpeg</code>: la imagen del mundo en la lista.</li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
+    <div id="error" class="card error" hidden>
+      <strong>Algo salió mal</strong>
+      <p id="error-text"></p>
+      <button id="btn-error" class="btn">Volver</button>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="js/files-app.js"></script>
+</body>
+</html>

@@ -164,6 +164,33 @@ def main():
     db.put(b"digp" + struct.pack("<iii", -6, 12, 1), donkey_id)
     db.put(b"digp" + struct.pack("<ii", 0, -1), drop_id)
 
+    # Estructuras guardadas con un bloque de estructuras (mismo formato que .mcstructure).
+    def structure(sx, sy, sz, palette, indices, origin, position_data=None):
+        return {
+            "format_version": Int(1),
+            "size": [Int(sx), Int(sy), Int(sz)],
+            "structure": {
+                "block_indices": [[Int(i) for i in indices], [Int(-1)] * len(indices)],
+                "entities": [],
+                "palette": {"default": {
+                    "block_palette": [{"name": n, "states": s, "version": Int(18163713)} for n, s in palette],
+                    "block_position_data": position_data or {},
+                }},
+            },
+            "structure_world_origin": [Int(origin[0]), Int(origin[1]), Int(origin[2])],
+        }
+
+    casa = structure(
+        3, 2, 3,
+        [("minecraft:stone", {}), ("minecraft:air", {}), ("minecraft:chest", {"minecraft:cardinal_direction": "north"})],
+        [0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        (10, 64, -5),
+        {"4": {"block_entity_data": block_entity("Chest", 11, 64, -4, [item("diamond", 9, 0)])}},
+    )
+    torre = structure(1, 4, 1, [("minecraft:oak_planks", {})], [0, 0, 0, 0], (0, 70, 0))
+    db.put(b"structuretemplate_mystructure:casa", nbt(casa))
+    db.put(b"structuretemplate_hardlands:torre", nbt(torre))
+
     # Jugadores.
     local = {
         "Pos": [Float(100.5), Float(65.62), Float(-40.5)], "DimensionId": Int(0),
@@ -184,6 +211,13 @@ def main():
 
     with open(os.path.join(world, "levelname.txt"), "w") as f:
         f.write("Mundo de prueba")
+    # Un pack de comportamiento con una estructura dentro (como los que trae un mundo).
+    pack = os.path.join(world, "behavior_packs", "Pack Hardlands", "structures")
+    os.makedirs(pack)
+    with open(os.path.join(pack, "puente.mcstructure"), "wb") as f:
+        f.write(nbt(torre))
+    with open(os.path.join(world, "behavior_packs", "Pack Hardlands", "manifest.json"), "w") as f:
+        f.write('{"format_version": 2}')
     with open(os.path.join(world, "level.dat"), "wb") as f:
         f.write(b"\x0a\x00\x00\x00\x00\x00\x00\x00")
 
