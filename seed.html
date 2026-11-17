@@ -28,8 +28,8 @@
 
   <main>
     <form id="form" class="card">
-      <h2>Estructuras cercanas</h2>
-      <p class="muted">Busca en una semilla dos estructuras que estén a pocos chunks una de otra. No hace falta el archivo del mundo: se calcula a partir de la semilla.</p>
+      <h2>Estructuras por semilla</h2>
+      <p class="muted">No hace falta el archivo del mundo: todo se calcula a partir de la semilla.</p>
 
       <label class="field">Semilla
         <input id="seed" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Por ejemplo -4504155221468820465" required>
@@ -40,18 +40,37 @@
       </label>
       <p id="seed-info" class="small muted" hidden></p>
 
-      <div class="grid2">
+      <div class="tabs mode-tabs" role="tablist">
+        <button type="button" role="tab" class="tab active" data-mode="multi" aria-selected="true">Estructuras múltiples</button>
+        <button type="button" role="tab" class="tab" data-mode="pairs" aria-selected="false">Parejas diferentes</button>
+      </div>
+
+      <!-- Apartado 1: varias estructuras del mismo tipo juntas -->
+      <div id="mode-multi">
+        <p class="small muted">Busca 2, 3, 4… estructuras <strong>del mismo tipo</strong> muy cerca unas de otras (por ejemplo tres cabañas de bruja o un monumento doble) y te resume lo que ha encontrado.</p>
         <label class="field">Estructura
-          <select id="type-a"></select>
+          <select id="multi-type"></select>
         </label>
-        <label class="field">Cerca de
-          <select id="type-b"></select>
+        <label class="field">Separación máxima entre ellas: <strong id="multi-dist-label"></strong>
+          <input id="multi-dist" type="range" min="1" max="40" step="1" value="16">
         </label>
       </div>
 
-      <label class="field" id="dist-field">Distancia máxima: <strong id="dist-label"></strong>
-        <input id="dist" type="range" min="1" max="10" step="1" value="10">
-      </label>
+      <!-- Apartado 2: dos estructuras diferentes cerca -->
+      <div id="mode-pairs" hidden>
+        <p class="small muted">Busca una estructura que tenga cerca otra <strong>de otro tipo</strong> (por ejemplo un monumento oceánico junto a un puesto de saqueadores).</p>
+        <div class="grid2">
+          <label class="field">Estructura
+            <select id="type-a"></select>
+          </label>
+          <label class="field">Cerca de
+            <select id="type-b"></select>
+          </label>
+        </div>
+        <label class="field" id="dist-field">Distancia máxima: <strong id="dist-label"></strong>
+          <input id="dist" type="range" min="1" max="40" step="1" value="10">
+        </label>
+      </div>
 
       <div class="grid3">
         <label class="field">Centro X
@@ -65,14 +84,15 @@
             <option value="5000">5 000</option>
             <option value="10000">10 000</option>
             <option value="25000">25 000</option>
-            <option value="50000">50 000</option>
-            <option value="100000" selected>100 000</option>
+            <option value="50000" selected>50 000</option>
+            <option value="100000">100 000</option>
             <option value="250000">250 000</option>
             <option value="500000">500 000</option>
             <option value="1000000">1 000 000</option>
           </select>
         </label>
       </div>
+      <p id="slow-note" class="small muted" hidden>Con un radio tan grande la búsqueda puede tardar varios minutos en el móvil. Puedes cancelarla cuando quieras.</p>
 
       <button id="btn-search" class="btn primary">Buscar</button>
     </form>
@@ -80,7 +100,7 @@
     <div id="progress" class="card" hidden>
       <p id="progress-status" class="muted">Buscando…</p>
       <div class="bar"><div id="progress-bar"></div></div>
-      <button id="btn-cancel" class="btn small">Cancelar</button>
+      <button id="btn-cancel" class="btn small" type="button">Cancelar</button>
     </div>
 
     <div id="error" class="card error" hidden>
@@ -88,13 +108,15 @@
       <p id="error-text"></p>
     </div>
 
+    <div id="report" class="card report" hidden></div>
+
+    <div id="controls" class="controls" hidden>
+      <label class="field">Ordenar por
+        <select id="sort"></select>
+      </label>
+      <label class="radio" id="only3-field"><input id="only3" type="checkbox"><span>Solo grupos de 3 o más</span></label>
+    </div>
     <p id="summary" class="muted small"></p>
-    <label id="sort-field" class="field sort-field" hidden>Ordenar por
-      <select id="sort">
-        <option value="pair">Las más juntas primero</option>
-        <option value="center">Las más cercanas al centro primero</option>
-      </select>
-    </label>
     <div id="results" class="results"></div>
 
     <details class="card help">
@@ -105,6 +127,8 @@
         <li>Es una predicción: muy de vez en cuando el terreno impide que una estructura aparezca aunque el bioma sea correcto.</li>
         <li>Solo vale para zonas del mapa generadas en 1.18 o posterior. Lo que se exploró en versiones antiguas puede ser distinto.</li>
         <li>Las coordenadas son el centro del chunk de la estructura. La estructura está en ese chunk o pegada a él.</li>
+        <li>En «Estructuras múltiples», un grupo son estructuras del mismo tipo en las que ninguna está a más de la separación elegida de cualquier otra del grupo.</li>
+        <li>Algunas combinaciones son muy raras o imposibles: dos puestos de saqueadores nunca están a menos de 25 chunks, ni dos mansiones a menos de 21.</li>
         <li>La semilla tiene que ser el número. Si creaste el mundo escribiendo un texto, usa «Leer la semilla de un mundo» o mírala en los ajustes del mundo.</li>
       </ul>
     </details>

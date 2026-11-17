@@ -49,16 +49,25 @@ El mundo original nunca se modifica.
 
 ## Estructuras por semilla (`seed.html`)
 
-Cuarta herramienta, en la pestaña **Semilla**: dada una semilla, busca **dos estructuras que estén
-a pocos chunks una de otra** (de 1 a 10), por ejemplo un monumento oceánico junto a un puesto de
-saqueadores, o un monumento doble. También puede listar un solo tipo de estructura.
+Cuarta herramienta, en la pestaña **Semilla**: busca estructuras cercanas entre sí en una semilla,
+sin necesitar el archivo del mundo. Tiene dos apartados:
 
-- No necesita el archivo del mundo. La semilla se escribe, o se lee de un mundo (`level.dat`),
-  y el punto de aparición se puede usar como centro de la búsqueda.
+- **Estructuras múltiples:** grupos de 2, 3, 4… estructuras **del mismo tipo** a como mucho la
+  separación elegida (1 a 40 chunks) unas de otras: tres cabañas de bruja, un monumento doble…
+  Se puede buscar un tipo o todos a la vez. Arriba sale un resumen, «Lo que encontré», con cuántos
+  grupos hay de cada tamaño por tipo, destacando los de 3 o más, y dónde está el mejor de cada tipo.
+  La lista se ordena por tamaño o por cercanía al centro, y se puede limitar a grupos de 3 o más.
+- **Parejas diferentes:** una estructura con otra de otro tipo a 1–40 chunks (por ejemplo un
+  monumento oceánico junto a un puesto de saqueadores), o listar un solo tipo.
+
+Además:
+
+- La semilla se escribe, o se lee de un mundo (`level.dat`), y el punto de aparición se puede usar
+  como centro de la búsqueda.
 - Estructuras: monumento oceánico, puesto de saqueadores, aldea, mansión, templo del desierto,
   templo de la jungla, cabaña de bruja e iglú.
-- Radio de búsqueda de 5 000 a 1 000 000 de bloques. Hay combinaciones muy raras: un monumento
-  a menos de 10 chunks de un puesto de saqueadores suele estar a cientos de miles de bloques.
+- Radio de búsqueda de 5 000 a 1 000 000 de bloques. La búsqueda se reparte entre varios núcleos;
+  con radios muy grandes puede tardar minutos en un móvil y se puede cancelar.
 - Cada resultado da las coordenadas, el bioma y botones para copiar coordenadas o `/tp`.
 
 Cómo se calcula:

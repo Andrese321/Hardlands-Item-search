@@ -40,35 +40,35 @@ const OUTPOST_BIOMES = [...VILLAGE_BIOMES, 178, 179, 180, 181, 182, 185];
 // checks: [[radioEnBloques, biomasPermitidos], ...] alrededor del centro del chunk.
 export const STRUCTURES = {
   monument: {
-    name: 'Monumento oceánico', spacing: 32, range: 27, salt: 10387313, tri: true,
+    name: 'Monumento oceánico', plural: 'monumentos oceánicos', spacing: 32, range: 27, salt: 10387313, tri: true,
     checks: [[0, DEEP_OCEANS], [16, DEEP_OCEANS], [29, OCEANS_AND_RIVERS]],
   },
   outpost: {
-    name: 'Puesto de saqueadores', spacing: 80, range: 56, salt: 165745296, tri: true,
+    name: 'Puesto de saqueadores', plural: 'puestos de saqueadores', spacing: 80, range: 56, salt: 165745296, tri: true,
     checks: [[0, OUTPOST_BIOMES]],
   },
   village: {
-    name: 'Aldea', spacing: 34, range: 26, salt: 10387312, tri: true,
+    name: 'Aldea', plural: 'aldeas', spacing: 34, range: 26, salt: 10387312, tri: true,
     checks: [[0, VILLAGE_BIOMES]],
   },
   mansion: {
-    name: 'Mansión del bosque', spacing: 80, range: 60, salt: 10387319, tri: true,
+    name: 'Mansión del bosque', plural: 'mansiones del bosque', spacing: 80, range: 60, salt: 10387319, tri: true,
     checks: [[0, [29, 186]], [32, [29, 186]]],
   },
   desert_temple: {
-    name: 'Templo del desierto', spacing: 32, range: 24, salt: 14357617, tri: false,
+    name: 'Templo del desierto', plural: 'templos del desierto', spacing: 32, range: 24, salt: 14357617, tri: false,
     checks: [[0, [2]]],
   },
   jungle_temple: {
-    name: 'Templo de la jungla', spacing: 32, range: 24, salt: 14357617, tri: false,
+    name: 'Templo de la jungla', plural: 'templos de la jungla', spacing: 32, range: 24, salt: 14357617, tri: false,
     checks: [[0, [21, 168]]],
   },
   witch_hut: {
-    name: 'Cabaña de bruja', spacing: 32, range: 24, salt: 14357617, tri: false,
+    name: 'Cabaña de bruja', plural: 'cabañas de bruja', spacing: 32, range: 24, salt: 14357617, tri: false,
     checks: [[0, [6]]],
   },
   igloo: {
-    name: 'Iglú', spacing: 32, range: 24, salt: 14357617, tri: false,
+    name: 'Iglú', plural: 'iglús', spacing: 32, range: 24, salt: 14357617, tri: false,
     checks: [[0, [12, 30, 179]]],
   },
 };
@@ -141,8 +141,13 @@ export async function loadBiomes(bytes) {
   e._initialize();
   const maskPtr = e.mask_ptr();
   let current = null;
+  let seedKey = null;
   return {
-    setSeed(seed) { e.seed_init(seed.lo, seed.hi); },
+    setSeed(seed) {
+      if (seedKey === seed.text) return;
+      e.seed_init(seed.lo, seed.hi);
+      seedKey = seed.text;
+    },
     biomeAt(x, z) { return e.biome_at(x, z); },
     /** ¿Todos los biomas del cuadrado de radio r alrededor de (x, z) están en `allowed`? */
     areaOnly(x, z, r, allowed) {
@@ -157,135 +162,383 @@ export async function loadBiomes(bytes) {
   };
 }
 
-function viable(biomes, cfg, cx, cz) {
-  const x = cx * 16 + 8;
-  const z = cz * 16 + 8;
-  for (const [r, allowed] of cfg.checks) if (!biomes.areaOnly(x, z, r, allowed)) return false;
-  return true;
+// ---------------------------------------------------------------- búsqueda
+//
+// La búsqueda se reparte en tareas independientes (franjas de regiones) para
+// poder ejecutarlas en varios hilos. Cada tarea calcula los intentos de su
+// franja, descarta los que no tienen otra estructura cerca (barato) y solo
+// entonces comprueba el bioma (caro).
+
+const LIMIT = 300;
+
+const gridKey = (cfg) => `${cfg.spacing}|${cfg.range}|${cfg.salt}|${cfg.tri ? 1 : 0}`;
+
+const masks = new Map();
+function maskOf(allowed) {
+  let m = masks.get(allowed);
+  if (!m) {
+    m = new Uint8Array(256);
+    for (const id of allowed) m[id] = 1;
+    masks.set(allowed, m);
+  }
+  return m;
 }
 
-// ---------------------------------------------------------------- búsqueda
-
-const key = (x, z) => x + ',' + z;
-
-/**
- * Busca estructuras en una semilla.
- *
- * @param opts.seed       resultado de parseSeed
- * @param opts.a          tipo de estructura (clave de STRUCTURES)
- * @param opts.b          segundo tipo, o null para listar solo `a`
- * @param opts.maxChunks  distancia máxima entre las dos (en chunks)
- * @param opts.centerX/Z  centro de la búsqueda (bloques)
- * @param opts.radius     radio de la búsqueda (bloques)
- * @param opts.limit      máximo de resultados
- * @returns { results, checked, truncated }
- */
-export function findStructures(biomes, opts, onProgress = () => {}) {
-  const { seed, a, b = null, maxChunks = 10, centerX = 0, centerZ = 0, radius = 5000, limit = 300 } = opts;
-  const A = STRUCTURES[a];
-  const B = b ? STRUCTURES[b] : null;
-  if (!A || (b && !B)) throw new Error('Estructura desconocida.');
-  biomes.setSeed(seed);
-  const seed32 = seed.lo;
-
-  const ccx = Math.floor(centerX / 16);
-  const ccz = Math.floor(centerZ / 16);
-  const rad = Math.ceil(radius / 16);
-  const inRange = (x, z) => Math.abs(x - ccx) <= rad && Math.abs(z - ccz) <= rad;
-
-  const cache = new Map();
-  let checked = 0;
-  const isViable = (type, cfg, x, z) => {
-    const k = type + key(x, z);
-    let v = cache.get(k);
-    if (v === undefined) {
-      v = viable(biomes, cfg, x, z);
-      cache.set(k, v);
-      checked++;
-    }
-    return v;
-  };
-  const describe = (cfg, x, z) => ({
-    name: cfg.name, x: x * 16 + 8, z: z * 16 + 8, chunkX: x, chunkZ: z,
-    biome: biomes.biomeAt(x * 16 + 8, z * 16 + 8),
-  });
-
-  const results = [];
-  const regions = (cfg) => ({
-    x0: Math.floor((ccx - rad) / cfg.spacing), x1: Math.floor((ccx + rad) / cfg.spacing),
-    z0: Math.floor((ccz - rad) / cfg.spacing), z1: Math.floor((ccz + rad) / cfg.spacing),
-  });
-
-  if (!B) {
-    // Solo una estructura: las más cercanas al centro.
-    const r = regions(A);
-    const all = [];
-    for (let rz = r.z0; rz <= r.z1; rz++) {
-      for (let rx = r.x0; rx <= r.x1; rx++) {
-        const [x, z] = attemptInRegion(A, seed32, rx, rz);
-        if (inRange(x, z)) all.push([x, z, Math.hypot(x - ccx, z - ccz)]);
+/** Ventana de regiones de una misma rejilla de colocación, con sus intentos. */
+class Grid {
+  constructor(cfg, seed32, rx0, rx1, rz0, rz1) {
+    Object.assign(this, { cfg, rx0, rx1, rz0, rz1, w: rx1 - rx0 + 1, h: rz1 - rz0 + 1 });
+    const n = this.w * this.h;
+    this.xs = new Int32Array(n);
+    this.zs = new Int32Array(n);
+    this.biome = new Int16Array(n).fill(-2);
+    this.state = new Map(); // tipo -> Uint8Array (0 sin comprobar, 1 válido, 2 no válido)
+    this.checked = 0;
+    let i = 0;
+    for (let rz = rz0; rz <= rz1; rz++) {
+      for (let rx = rx0; rx <= rx1; rx++, i++) {
+        const [x, z] = attemptInRegion(cfg, seed32, rx, rz);
+        this.xs[i] = x;
+        this.zs[i] = z;
       }
     }
-    all.sort((p, q) => p[2] - q[2]);
-    for (let i = 0; i < all.length && results.length < limit; i++) {
-      const [x, z, d] = all[i];
-      if (i % 200 === 0) onProgress(i / all.length);
-      if (isViable(a, A, x, z)) results.push({ a: describe(A, x, z), fromCenter: Math.round(d * 16) });
-    }
-    return { results, checked, truncated: results.length >= limit };
   }
 
-  // Dos estructuras: se recorre la más escasa (regiones más grandes) y se
-  // miran las regiones de la otra que quedan a `maxChunks` de distancia.
-  const swap = B.spacing > A.spacing;
-  const [outer, outerType, inner, innerType] = swap ? [B, b, A, a] : [A, a, B, b];
-  const same = a === b;
-  const r = regions(outer);
-  const max2 = maxChunks * maxChunks;
-  const pairs = [];
-  const rows = r.z1 - r.z0 + 1;
-  for (let rz = r.z0; rz <= r.z1; rz++) {
-    if ((rz - r.z0) % 8 === 0) onProgress(0.5 * ((rz - r.z0) / rows));
-    for (let rx = r.x0; rx <= r.x1; rx++) {
-      const [ox, oz] = attemptInRegion(outer, seed32, rx, rz);
-      if (!inRange(ox, oz)) continue;
-      const ix0 = Math.floor((ox - maxChunks) / inner.spacing);
-      const ix1 = Math.floor((ox + maxChunks) / inner.spacing);
-      const iz0 = Math.floor((oz - maxChunks) / inner.spacing);
-      const iz1 = Math.floor((oz + maxChunks) / inner.spacing);
-      for (let jz = iz0; jz <= iz1; jz++) {
-        for (let jx = ix0; jx <= ix1; jx++) {
-          const [ix, iz] = attemptInRegion(inner, seed32, jx, jz);
-          const d2 = (ix - ox) * (ix - ox) + (iz - oz) * (iz - oz);
+  index(rx, rz) {
+    return (rz - this.rz0) * this.w + (rx - this.rx0);
+  }
+
+  viable(biomes, type, i) {
+    let st = this.state.get(type);
+    if (!st) this.state.set(type, (st = new Uint8Array(this.w * this.h)));
+    if (st[i]) return st[i] === 1;
+    const x = this.xs[i] * 16 + 8;
+    const z = this.zs[i] * 16 + 8;
+    let b = this.biome[i];
+    if (b === -2) {
+      b = biomes.biomeAt(x, z);
+      this.biome[i] = b;
+      this.checked++;
+    }
+    let ok = true;
+    for (const [r, allowed] of STRUCTURES[type].checks) {
+      if (r === 0 ? !(b >= 0 && b < 256 && maskOf(allowed)[b]) : !biomes.areaOnly(x, z, r, allowed)) {
+        ok = false;
+        break;
+      }
+    }
+    st[i] = ok ? 1 : 2;
+    return ok;
+  }
+
+  point(i) {
+    return { x: this.xs[i] * 16 + 8, z: this.zs[i] * 16 + 8, biome: this.biome[i] };
+  }
+}
+
+/** Lista acotada: se queda con los `limit` mejores según `cmp`. */
+class Top {
+  constructor(cmp, limit = LIMIT) {
+    Object.assign(this, { cmp, limit, items: [] });
+  }
+
+  push(item) {
+    this.items.push(item);
+    if (this.items.length > this.limit * 4) this.trim();
+  }
+
+  trim() {
+    this.items.sort(this.cmp);
+    if (this.items.length > this.limit) this.items.length = this.limit;
+    return this.items;
+  }
+}
+
+// Desempate fijo para que el resultado no dependa del orden en que terminan las tareas.
+const tie = (p, q) => {
+  const a = p.a || p;
+  const b = q.a || q;
+  return a.x - b.x || a.z - b.z || (p.b && q.b ? p.b.x - q.b.x || p.b.z - q.b.z : 0) || (p.type || '').localeCompare(q.type || '');
+};
+const bySize = (p, q) => q.size - p.size || p.span - q.span || p.fromCenter - q.fromCenter || tie(p, q);
+const byCenter = (p, q) => p.fromCenter - q.fromCenter || tie(p, q);
+const byPair = (p, q) => p.chunks - q.chunks || p.fromCenter - q.fromCenter || tie(p, q);
+
+function normalize(opts) {
+  const o = {
+    mode: 'multi', types: null, a: null, b: null, maxChunks: 10, centerX: 0, centerZ: 0, radius: 5000, ...opts,
+  };
+  o.maxChunks = Math.max(1, Math.min(40, Math.round(o.maxChunks)));
+  if (o.mode === 'multi') {
+    o.types = (o.types && o.types.length ? o.types : Object.keys(STRUCTURES)).filter((t) => STRUCTURES[t]);
+    if (!o.types.length) throw new Error('Estructura desconocida.');
+  } else {
+    if (!STRUCTURES[o.a] || (o.b && !STRUCTURES[o.b])) throw new Error('Estructura desconocida.');
+    if (!o.b) o.mode = 'single';
+  }
+  return o;
+}
+
+// Regiones de `cfg` que tocan el cuadrado de búsqueda ampliado `margin` chunks.
+function regionRange(cfg, o, margin) {
+  const c0x = Math.floor((o.centerX - o.radius) / 16) - margin;
+  const c1x = Math.floor((o.centerX + o.radius) / 16) + margin;
+  const c0z = Math.floor((o.centerZ - o.radius) / 16) - margin;
+  const c1z = Math.floor((o.centerZ + o.radius) / 16) + margin;
+  // un intento de la región r está en [r·spacing, r·spacing + range)
+  return {
+    rx0: Math.floor((c0x - cfg.range + 1) / cfg.spacing), rx1: Math.floor(c1x / cfg.spacing),
+    rz0: Math.floor((c0z - cfg.range + 1) / cfg.spacing), rz1: Math.floor(c1z / cfg.spacing),
+  };
+}
+
+/** Divide una búsqueda en tareas independientes (de unas `taskRegions` regiones cada una). */
+export function planTasks(options, taskRegions = 120000) {
+  const o = normalize(options);
+  const tasks = [];
+  const strips = (cfg, extra, margin) => {
+    const r = regionRange(cfg, o, margin);
+    const cols = r.rx1 - r.rx0 + 1;
+    const rows = Math.max(2, Math.floor(taskRegions / cols));
+    for (let a = r.rz0; a <= r.rz1; a += rows) tasks.push({ ...extra, rz0: a, rz1: Math.min(r.rz1, a + rows - 1) });
+  };
+  if (o.mode === 'multi') {
+    const grids = new Map();
+    for (const t of o.types) {
+      const k = gridKey(STRUCTURES[t]);
+      if (!grids.has(k)) grids.set(k, []);
+      grids.get(k).push(t);
+    }
+    for (const types of grids.values()) strips(STRUCTURES[types[0]], { kind: 'multi', types }, o.maxChunks);
+  } else if (o.mode === 'pairs') {
+    // Se recorre el tipo más escaso (regiones más grandes).
+    const swap = STRUCTURES[o.b].spacing > STRUCTURES[o.a].spacing;
+    const [outer, inner] = swap ? [o.b, o.a] : [o.a, o.b];
+    strips(STRUCTURES[outer], { kind: 'pairs', outer, inner, swap }, o.maxChunks);
+  } else {
+    strips(STRUCTURES[o.a], { kind: 'single', type: o.a }, 0);
+  }
+  return { options: o, tasks };
+}
+
+function inSquare(o, x, z) {
+  return Math.abs(x - o.centerX) <= o.radius && Math.abs(z - o.centerZ) <= o.radius;
+}
+
+// Cliques máximos (Bron–Kerbosch) entre estructuras a `max2` de distancia.
+function cliques(R, P, X, adjacent, emit) {
+  if (!P.length) {
+    if (!X.length && R.length > 1) emit(R);
+    return;
+  }
+  const rest = P.slice();
+  const excluded = X.slice();
+  for (const v of P) {
+    cliques([...R, v], rest.filter((u) => u !== v && adjacent(u, v)), excluded.filter((u) => adjacent(u, v)), adjacent, emit);
+    rest.splice(rest.indexOf(v), 1);
+    excluded.push(v);
+  }
+}
+
+function runMulti(biomes, o, task) {
+  const cfg = STRUCTURES[task.types[0]];
+  const N = o.maxChunks;
+  const max2 = N * N;
+  const own = regionRange(cfg, o, N);
+  const dr = Math.floor((N + cfg.range - 1) / cfg.spacing); // regiones vecinas que pueden estar a N chunks
+  const g = new Grid(cfg, o.seed.lo, own.rx0 - dr, own.rx1 + dr, task.rz0 - dr, task.rz1 + dr);
+  const { xs, zs } = g;
+  const adjacent = (i, j) => {
+    const dx = xs[i] - xs[j];
+    const dz = zs[i] - zs[j];
+    return dx * dx + dz * dz <= max2;
+  };
+  const counts = {};
+  const best = {}; // mejor grupo de cada tipo (más grande y, a igual tamaño, más junto)
+  const tops = { size: new Top(bySize), center: new Top(byCenter), center3: new Top(byCenter) };
+
+  for (let rz = task.rz0; rz <= task.rz1; rz++) {
+    for (let rx = own.rx0; rx <= own.rx1; rx++) {
+      const i = g.index(rx, rz);
+      const near = [];
+      for (let jz = rz - dr; jz <= rz + dr; jz++) {
+        for (let jx = rx - dr; jx <= rx + dr; jx++) {
+          const j = g.index(jx, jz);
+          if (j !== i && adjacent(i, j)) near.push(j);
+        }
+      }
+      if (!near.length) continue;
+      for (const type of task.types) {
+        if (!g.viable(biomes, type, i)) continue;
+        const later = [];
+        const earlier = [];
+        for (const j of near) if (g.viable(biomes, type, j)) (j > i ? later : earlier).push(j);
+        if (!later.length) continue;
+        cliques([i], later, earlier, adjacent, (members) => {
+          let sx = 0;
+          let sz = 0;
+          let span2 = 0;
+          for (let a = 0; a < members.length; a++) {
+            sx += xs[members[a]];
+            sz += zs[members[a]];
+            for (let b = a + 1; b < members.length; b++) {
+              const dx = xs[members[a]] - xs[members[b]];
+              const dz = zs[members[a]] - zs[members[b]];
+              span2 = Math.max(span2, dx * dx + dz * dz);
+            }
+          }
+          const cx = Math.round((sx / members.length) * 16 + 8);
+          const cz = Math.round((sz / members.length) * 16 + 8);
+          if (!inSquare(o, cx, cz)) return;
+          const size = members.length;
+          const span = Math.sqrt(span2);
+          counts[type] ||= {};
+          counts[type][size] = (counts[type][size] || 0) + 1;
+          const group = {
+            type, size, span: Math.round(span * 10) / 10, blocks: Math.round(span * 16), x: cx, z: cz,
+            fromCenter: Math.round(Math.hypot(cx - o.centerX, cz - o.centerZ)),
+            members: members.map((m) => g.point(m)),
+          };
+          if (!best[type] || bySize(group, best[type]) < 0) best[type] = group;
+          tops.size.push(group);
+          tops.center.push(group);
+          if (size >= 3) tops.center3.push(group);
+        });
+      }
+    }
+  }
+  return {
+    kind: 'multi', counts, best, checked: g.checked,
+    size: tops.size.trim(), center: tops.center.trim(), center3: tops.center3.trim(),
+  };
+}
+
+function runPairs(biomes, o, task) {
+  const O = STRUCTURES[task.outer];
+  const I = STRUCTURES[task.inner];
+  const N = o.maxChunks;
+  const max2 = N * N;
+  const own = regionRange(O, o, N);
+  const sameGrid = gridKey(O) === gridKey(I);
+  const sameType = task.outer === task.inner;
+  // Ventana de la rejilla interior que cubre la franja ampliada N chunks.
+  const iw = {
+    rx0: Math.floor((own.rx0 * O.spacing - N - I.range + 1) / I.spacing), rx1: Math.floor(((own.rx1 + 1) * O.spacing + N) / I.spacing),
+    rz0: Math.floor((task.rz0 * O.spacing - N - I.range + 1) / I.spacing), rz1: Math.floor(((task.rz1 + 1) * O.spacing + N) / I.spacing),
+  };
+  const gi = new Grid(I, o.seed.lo, iw.rx0, iw.rx1, iw.rz0, iw.rz1);
+  const go = sameGrid ? gi : new Grid(O, o.seed.lo, own.rx0, own.rx1, task.rz0, task.rz1);
+  const outerFirst = O.checks.length <= I.checks.length;
+  const tops = { pair: new Top(byPair), center: new Top(byCenter) };
+  let total = 0;
+
+  for (let rz = task.rz0; rz <= task.rz1; rz++) {
+    for (let rx = own.rx0; rx <= own.rx1; rx++) {
+      const i = go.index(rx, rz);
+      const ox = go.xs[i];
+      const oz = go.zs[i];
+      const jx1 = Math.floor((ox + N) / I.spacing);
+      const jz1 = Math.floor((oz + N) / I.spacing);
+      for (let jz = Math.floor((oz - N - I.range + 1) / I.spacing); jz <= jz1; jz++) {
+        for (let jx = Math.floor((ox - N - I.range + 1) / I.spacing); jx <= jx1; jx++) {
+          const j = gi.index(jx, jz);
+          const dx = gi.xs[j] - ox;
+          const dz = gi.zs[j] - oz;
+          const d2 = dx * dx + dz * dz;
           if (d2 > max2) continue;
-          if (same && (d2 === 0 || ix < ox || (ix === ox && iz < oz))) continue; // cada pareja una vez
-          if (innerType !== outerType && d2 === 0 && inner.salt === outer.salt) continue; // mismo intento, otro bioma
-          pairs.push([ox, oz, ix, iz, d2]);
+          if (sameGrid && (j === i || (sameType && j < i))) continue; // el mismo intento, o pareja ya contada
+          const ok = outerFirst
+            ? go.viable(biomes, task.outer, i) && gi.viable(biomes, task.inner, j)
+            : gi.viable(biomes, task.inner, j) && go.viable(biomes, task.outer, i);
+          if (!ok) continue;
+          const po = { ...go.point(i), name: O.name };
+          const pi = { ...gi.point(j), name: I.name };
+          const mx = (po.x + pi.x) / 2;
+          const mz = (po.z + pi.z) / 2;
+          if (!inSquare(o, mx, mz)) continue;
+          const dist = Math.sqrt(d2);
+          const pair = {
+            a: task.swap ? pi : po, b: task.swap ? po : pi,
+            chunks: Math.round(dist * 10) / 10, blocks: Math.round(dist * 16),
+            fromCenter: Math.round(Math.hypot(mx - o.centerX, mz - o.centerZ)),
+          };
+          total++;
+          tops.pair.push(pair);
+          tops.center.push(pair);
         }
       }
     }
   }
-  pairs.sort((p, q) => p[4] - q[4] || Math.hypot(p[0] - ccx, p[1] - ccz) - Math.hypot(q[0] - ccx, q[1] - ccz));
+  return { kind: 'pairs', total, checked: go.checked + (sameGrid ? 0 : gi.checked), pair: tops.pair.trim(), center: tops.center.trim() };
+}
 
-  for (let i = 0; i < pairs.length && results.length < limit; i++) {
-    if (i % 50 === 0) onProgress(0.5 + 0.5 * (i / pairs.length));
-    const [ox, oz, ix, iz, d2] = pairs[i];
-    // Primero la comprobación más barata.
-    const outerFirst = outer.checks.length <= inner.checks.length;
-    const ok = outerFirst
-      ? isViable(outerType, outer, ox, oz) && isViable(innerType, inner, ix, iz)
-      : isViable(innerType, inner, ix, iz) && isViable(outerType, outer, ox, oz);
-    if (!ok) continue;
-    const pa = swap ? describe(A, ix, iz) : describe(A, ox, oz);
-    const pb = swap ? describe(B, ox, oz) : describe(B, ix, iz);
-    const dist = Math.sqrt(d2);
-    results.push({
-      a: pa, b: pb,
-      chunks: Math.round(dist * 10) / 10,
-      blocks: Math.round(dist * 16),
-      fromCenter: Math.round(Math.hypot((pa.x + pb.x) / 2 - centerX, (pa.z + pb.z) / 2 - centerZ)),
-    });
+function runSingle(biomes, o, task) {
+  const cfg = STRUCTURES[task.type];
+  const own = regionRange(cfg, o, 0);
+  const g = new Grid(cfg, o.seed.lo, own.rx0, own.rx1, task.rz0, task.rz1);
+  const top = new Top(byCenter);
+  let total = 0;
+  for (let i = 0; i < g.xs.length; i++) {
+    const x = g.xs[i] * 16 + 8;
+    const z = g.zs[i] * 16 + 8;
+    if (!inSquare(o, x, z) || !g.viable(biomes, task.type, i)) continue;
+    total++;
+    top.push({ a: { ...g.point(i), name: cfg.name }, fromCenter: Math.round(Math.hypot(x - o.centerX, z - o.centerZ)) });
   }
-  onProgress(1);
-  return { results, checked, candidates: pairs.length, truncated: results.length >= limit };
+  return { kind: 'single', total, checked: g.checked, center: top.trim() };
+}
+
+/** Ejecuta una tarea de planTasks. `options` = las opciones normalizadas del plan. */
+export function runTask(biomes, options, task) {
+  biomes.setSeed(options.seed);
+  if (task.kind === 'multi') return runMulti(biomes, options, task);
+  if (task.kind === 'pairs') return runPairs(biomes, options, task);
+  return runSingle(biomes, options, task);
+}
+
+/** Junta los resultados de todas las tareas. */
+export function mergeResults(options, parts) {
+  const out = { mode: options.mode, checked: 0 };
+  const cat = (key, cmp) => {
+    const top = new Top(cmp);
+    for (const p of parts) for (const item of p[key] || []) top.push(item);
+    return top.trim();
+  };
+  for (const p of parts) out.checked += p.checked;
+  if (options.mode === 'multi') {
+    out.counts = {};
+    out.best = {};
+    for (const p of parts) {
+      for (const [type, group] of Object.entries(p.best)) {
+        if (!out.best[type] || bySize(group, out.best[type]) < 0) out.best[type] = group;
+      }
+      for (const [type, sizes] of Object.entries(p.counts)) {
+        out.counts[type] ||= {};
+        for (const [size, n] of Object.entries(sizes)) out.counts[type][size] = (out.counts[type][size] || 0) + n;
+      }
+    }
+    out.types = options.types;
+    out.size = cat('size', bySize);
+    out.center = cat('center', byCenter);
+    out.center3 = cat('center3', byCenter);
+  } else if (options.mode === 'pairs') {
+    out.total = parts.reduce((s, p) => s + p.total, 0);
+    out.pair = cat('pair', byPair);
+    out.center = cat('center', byCenter);
+  } else {
+    out.total = parts.reduce((s, p) => s + p.total, 0);
+    out.center = cat('center', byCenter);
+  }
+  return out;
+}
+
+/** Búsqueda completa en un solo hilo (pruebas y navegadores sin varios hilos). */
+export function search(biomes, options, onProgress = () => {}) {
+  const plan = planTasks(options);
+  const parts = plan.tasks.map((task, i) => {
+    const r = runTask(biomes, plan.options, task);
+    onProgress((i + 1) / plan.tasks.length);
+    return r;
+  });
+  return mergeResults(plan.options, parts);
 }

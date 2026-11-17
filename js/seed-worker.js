@@ -1,6 +1,6 @@
 // Trabajo pesado del buscador por semilla (fuera del hilo de la interfaz).
 
-import { loadBiomes, findStructures, parseSeed } from './seedfinder.js';
+import { loadBiomes, runTask } from './seedfinder.js';
 import { openZip } from './zip.js';
 import { readNbt } from './nbt.js';
 
@@ -53,17 +53,14 @@ async function levelDatFrom(data) {
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
   self.onmessage = async ({ data }) => {
     try {
-      if (data.type === 'search') {
-        const b = await biomes();
-        const t = performance.now();
-        const out = findStructures(b, { ...data.opts, seed: parseSeed(data.opts.seed) },
-          (value) => postMessage({ type: 'progress', value }));
-        postMessage({ type: 'done', ...out, ms: Math.round(performance.now() - t) });
+      if (data.type === 'task') {
+        const result = runTask(await biomes(), data.options, data.task);
+        postMessage({ type: 'result', id: data.id, result });
       } else if (data.type === 'readSeed') {
         postMessage({ type: 'seed', ...(await levelDatFrom(data)) });
       }
     } catch (e) {
-      postMessage({ type: 'error', message: e?.message || String(e) });
+      postMessage({ type: 'error', id: data.id, message: e?.message || String(e) });
     }
   };
 }
