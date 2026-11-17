@@ -183,14 +183,16 @@ export function blocksToChunkZone(x1, z1, x2, z2) {
 
 /**
  * Elige los chunks a borrar.
- * @param mode 'inside' (borrar lo que está dentro de las zonas) o 'outside' (borrar todo menos las zonas)
+ * La selección es la unión de las zonas rectangulares y los chunks pintados ("x,z").
+ * @param mode 'inside' (borrar lo seleccionado) o 'outside' (borrar todo menos lo seleccionado)
  */
-export function selectChunks(analysis, { dim, zones, mode }) {
+export function selectChunks(analysis, { dim, zones = [], painted = [], mode }) {
+  const marked = new Set(painted);
   const out = [];
   for (const ch of analysis.chunks.values()) {
     if (ch.dim !== dim || !ch.real) continue;
-    const inside = inZones(ch.x, ch.z, zones);
-    if ((mode === 'inside') === inside) out.push(ch);
+    const selected = inZones(ch.x, ch.z, zones) || marked.has(ch.x + ',' + ch.z);
+    if ((mode === 'inside') === selected) out.push(ch);
   }
   return out;
 }

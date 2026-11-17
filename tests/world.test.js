@@ -25,10 +25,8 @@ function where(index, id) {
 
 test('las tablas usan compresión zlib de Mojang y se leen', async () => {
   const zip = await openZip(zipBlob);
-  const ldb = zip.entries.find((e) => e.name.endsWith('.ldb'));
-  const bytes = await zip.read(ldb);
   let n = 0;
-  readTable(bytes, () => n++);
+  for (const ldb of zip.entries.filter((e) => e.name.endsWith('.ldb'))) readTable(await zip.read(ldb), () => n++);
   assert.ok(n > 1000);
 });
 

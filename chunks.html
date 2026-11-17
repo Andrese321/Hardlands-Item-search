@@ -84,9 +84,36 @@
           <option value="1">Nether</option>
           <option value="2">End</option>
         </select>
+        <select id="view-mode" aria-label="Vista del mapa">
+          <option value="top">Satélite: desde arriba</option>
+          <option value="slice">Satélite: corte en Y (cuevas)</option>
+          <option value="grid">Cuadrícula</option>
+        </select>
       </div>
 
       <div class="card map-card">
+        <div class="tool-row">
+          <div class="seg" id="tools" role="toolbar" aria-label="Herramienta">
+            <button type="button" data-tool="move" class="active" aria-pressed="true">Mover</button>
+            <button type="button" data-tool="paint" aria-pressed="false">Pintar</button>
+            <button type="button" data-tool="erase" aria-pressed="false">Quitar</button>
+            <button type="button" data-tool="rect" aria-pressed="false">Rectángulo</button>
+          </div>
+        </div>
+        <div class="tool-row tool-opts">
+          <label class="inline">Pincel
+            <select id="brush">
+              <option value="1">1 chunk</option>
+              <option value="3">3 × 3</option>
+              <option value="5">5 × 5</option>
+              <option value="9">9 × 9</option>
+            </select>
+          </label>
+          <div class="tool-actions">
+            <button id="undo" type="button" class="btn small" disabled>Deshacer</button>
+            <button id="clear-sel" type="button" class="btn small" disabled>Desmarcar todo</button>
+          </div>
+        </div>
         <div class="map-wrap">
           <canvas id="map" aria-label="Mapa de chunks"></canvas>
           <div class="map-buttons">
@@ -94,19 +121,25 @@
             <button id="zoom-out" class="btn small" aria-label="Alejar">−</button>
             <button id="zoom-fit" class="btn small">Ajustar</button>
           </div>
+          <div id="map-loading" class="map-loading" hidden></div>
         </div>
-        <p id="map-hint" class="small muted">Toca el mapa en dos esquinas para marcar una zona. Arrastra para moverte.</p>
+        <div id="slice-field" class="slice-field" hidden>
+          <label for="slice-y">Altura de corte: <strong id="slice-y-label"></strong></label>
+          <input id="slice-y" type="range" min="1" max="126" step="1" value="100">
+          <p class="small muted">Se ve el primer suelo que hay por debajo de esa altura. En el Nether, 100 deja ver las cuevas bajo el techo de roca madre.</p>
+        </div>
+        <p id="map-hint" class="small muted"></p>
         <div class="legend small">
-          <span><i class="sw sw-chunk"></i>Chunk generado</span>
-          <span><i class="sw sw-chest"></i>Con cofres u objetos</span>
           <span><i class="sw sw-del"></i>Se borrará</span>
+          <span><i class="sw sw-chest"></i>Con cofres u objetos</span>
           <span><i class="sw sw-player"></i>Jugador</span>
+          <span><i class="sw sw-zone"></i>Rectángulo</span>
         </div>
       </div>
 
       <div class="card">
-        <h2>Zonas</h2>
-        <p class="small muted">Coordenadas en bloques (las de F3 / «Mostrar coordenadas»). Se incluye todo chunk que toque la zona.</p>
+        <h2>Zonas por coordenadas</h2>
+        <p class="small muted">También puedes marcar zonas escribiendo las coordenadas en bloques (las de F3 / «Mostrar coordenadas»). Se incluye todo chunk que toque la zona.</p>
         <form id="form-rect" class="grid4">
           <label>X1<input name="x1" type="number" inputmode="numeric" required></label>
           <label>Z1<input name="z1" type="number" inputmode="numeric" required></label>
@@ -125,8 +158,8 @@
 
       <div class="card">
         <h2>¿Qué borrar?</h2>
-        <label class="radio"><input type="radio" name="mode" value="inside" checked><span>Borrar los chunks <strong>dentro</strong> de las zonas</span></label>
-        <label class="radio"><input type="radio" name="mode" value="outside"><span>Borrar <strong>todo lo de fuera</strong> (las zonas se conservan: útil para reiniciar el mapa salvo las bases)</span></label>
+        <label class="radio"><input type="radio" name="mode" value="inside" checked><span>Borrar los chunks <strong>marcados</strong> (pintados o dentro de un rectángulo)</span></label>
+        <label class="radio"><input type="radio" name="mode" value="outside"><span>Borrar <strong>todo lo demás</strong> (lo marcado se conserva: útil para reiniciar el mapa salvo las bases)</span></label>
         <div id="summary" class="summary"></div>
         <label class="radio"><input id="confirm" type="checkbox"><span>Tengo guardada una copia del mundo original</span></label>
         <button id="btn-build" class="btn primary" disabled>Crear mundo modificado</button>

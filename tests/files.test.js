@@ -36,7 +36,8 @@ test('los .mcstructure de los packs se reconocen y el árbol de carpetas es corr
   const tree = buildTree(zip.entries.map((x) => ({ path: x.name, size: x.size })));
   assert.deepEqual([...tree.dirs.keys()].sort(), ['behavior_packs', 'db']);
   assert.equal(tree.count, zip.entries.length);
-  assert.equal(tree.dirs.get('db').files.length, 5);
+  assert.equal(tree.dirs.get('db').files.length, zip.entries.filter((e) => e.name.startsWith('db/')).length);
+  assert.ok(tree.dirs.get('db').files.some((f) => f.name === 'CURRENT'));
 });
 
 test('nombres de fichero seguros y sin repetir', () => {

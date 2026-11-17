@@ -84,3 +84,16 @@ test('borrar todo excepto una zona', async () => {
   assert.ok(after.items.some((i) => i.id === 'minecraft:netherite_ingot'), 'el chunk (0,-1) está dentro de la zona protegida');
   assert.ok(a2.maxSeq >= a.maxSeq + chosen.length);
 });
+
+test('chunks pintados: se suman a las zonas y respetan el modo', async () => {
+  const { files } = await filesOf(original);
+  const a = await analyzeChunks(dbFiles(files));
+  const painted = ['0,-1', '5,5', '-20,-20', '999,999']; // el último no existe: se ignora
+  const inside = selectChunks(a, { dim: 0, zones: [[1, 1, 2, 2]], painted, mode: 'inside' });
+  assert.deepEqual(inside.map((c) => c.x + ',' + c.z).sort(), ['-20,-20', '0,-1', '1,1', '1,2', '2,1', '2,2', '5,5']);
+  const outside = selectChunks(a, { dim: 0, zones: [], painted, mode: 'outside' });
+  assert.equal(outside.length, 1600 - 3);
+  // en el Nether, los chunks pintados del mundo normal no cuentan
+  const nether = selectChunks(a, { dim: 1, painted: ['-7,12'], mode: 'inside' });
+  assert.deepEqual(nether.map((c) => [c.dim, c.x, c.z]), [[1, -7, 12]]);
+});

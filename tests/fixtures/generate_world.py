@@ -101,6 +101,50 @@ def block_entity(eid, x, y, z, items=None, **extra):
     return d
 
 
+
+# --------------------------------------------------------------- subchunks (terreno)
+#
+# Formato de Bedrock: [versión] [nº de capas] ([índice Y] en v9) capas...
+# Cada capa: [bits << 1] palabras uint32 · [tamaño paleta] · paleta NBT.
+# Orden de los bloques: XZY, índice = (x << 8) | (z << 4) | y.
+
+
+def encode_layer(names):
+    palette, index, ids = [], {}, []
+    for n in names:
+        if n not in index:
+            index[n] = len(palette)
+            palette.append(n)
+        ids.append(index[n])
+    bits = 0
+    if len(palette) > 1:
+        bits = next(b for b in (1, 2, 3, 4, 5, 6, 8, 16) if (1 << b) >= len(palette))
+    out = bytes([bits << 1])
+    if bits:
+        per = 32 // bits
+        words = [0] * ((4096 + per - 1) // per)
+        for i, v in enumerate(ids):
+            words[i // per] |= v << ((i % per) * bits)
+        out += struct.pack("<%dI" % len(words), *words) + struct.pack("<i", len(palette))
+    for n in palette:
+        out += nbt({"name": "minecraft:" + n, "states": {}, "version": Int(18163713)})
+    return out
+
+
+def subchunk(block, version=8, yidx=0, water_layer=None):
+    """block(x, y, z) -> nombre (sin «minecraft:»); y local 0..15."""
+    layers = [encode_layer([block(x, y, z) for x in range(16) for z in range(16) for y in range(16)])]
+    if water_layer:
+        layers.append(encode_layer([water_layer(x, y, z) for x in range(16) for z in range(16) for y in range(16)]))
+    head = bytes([version, len(layers)]) + (bytes([yidx & 0xFF]) if version == 9 else b"")
+    return head + b"".join(layers)
+
+
+def surface(wx, wz):
+    """Altura del terreno de prueba en la zona con relieve (0 <= cx, cz < 4)."""
+    return 66 + (wx * 3 + wz * 7) % 9 - (4 if wx < 16 and wz < 16 else 0)
+
+
 def main():
     tmp = tempfile.mkdtemp()
     world = os.path.join(tmp, "world")
@@ -108,10 +152,72 @@ def main():
     db = leveldb.LevelDB(os.path.join(world, "db"), create_if_missing=True)
     rnd = random.Random(1234)
 
-    # Relleno: muchas claves de subchunk para que haya varios bloques comprimidos.
+    # Terreno del mundo normal: 40x40 chunks con un subchunk (y 64..79) de piedra
+    # (paleta de un solo bloque) para que haya muchas claves y varios bloques comprimidos.
+    stone_sub = subchunk(lambda x, y, z: "stone")
     for cx in range(-20, 20):
         for cz in range(-20, 20):
-            db.put(chunk_key(cx, cz, 0, 0x2F) + b"\x04", bytes(rnd.getrandbits(8) for _ in range(40)) + bytes(260))
+            if 0 <= cx < 4 and 0 <= cz < 4:
+                continue
+            db.put(chunk_key(cx, cz, 0, 0x2F) + b"\x04", stone_sub)
+
+    # Zona con relieve (chunks 0..3): hierba sobre tierra, un lago en el chunk (0,0)
+    # con kelp anegado, y un subchunk en versión 9 con índice negativo (y -64..-49).
+    for cx in range(4):
+        for cz in range(4):
+            def block(x, y, z, cx=cx, cz=cz):
+                wx, wz, wy = cx * 16 + x, cz * 16 + z, 64 + y
+                h = surface(wx, wz)
+                if cx == 0 and cz == 0 and 4 <= x < 12 and 4 <= z < 12:  # lago: fondo de arena a 66, agua hasta 74
+                    if wy < 66:
+                        return "dirt"
+                    if wy == 66:
+                        return "sand"
+                    if wy <= 74:
+                        return "kelp" if (x == 6 and z == 6 and wy <= 70) else "water"
+                    return "air"
+                if wy < h:
+                    return "dirt"
+                if wy == h:
+                    return "grass_block"
+                return "air"
+
+            def water(x, y, z, cx=cx, cz=cz):
+                return "water" if (cx == 0 and cz == 0 and x == 6 and z == 6 and 67 <= 64 + y <= 70) else "air"
+
+            version = 9 if (cx + cz) % 2 else 8
+            db.put(chunk_key(cx, cz, 0, 0x2F) + b"\x04", subchunk(block, version, 4, water if cx == 0 and cz == 0 else None))
+            db.put(chunk_key(cx, cz, 0, 0x2F) + bytes([0xFC]), subchunk(lambda x, y, z: "bedrock" if y == 0 else "deepslate", 9, -4))
+            db.put(chunk_key(cx, cz, 0, 0x2C), b"\x28")  # versión del chunk
+
+    # Torre de lana roja en el chunk (1,1), que después se reemplaza por una versión más baja.
+    db.put(chunk_key(1, 1, 0, 0x2F) + b"\x05", subchunk(lambda x, y, z: "red_wool" if (x == 8 and z == 8) else "air", 8, 5))
+
+    # Nether: chunks (-8..-6, 11..13). Roca madre en y 0, lava hasta 31, suelo de
+    # nylium carmesí a 40, aire hasta 99 y techo de netherrack de 100 a 127.
+    def nether(cx, cz, idx):
+        def block(x, y, z):
+            wy = idx * 16 + y
+            if wy == 0:
+                return "bedrock"
+            if wy <= 31:
+                return "lava"
+            if wy < 40:
+                return "netherrack"
+            if wy == 40:
+                return "crimson_nylium"
+            if x == 3 and z == 3 and wy <= 60:  # columna de basalto
+                return "basalt"
+            if wy < 100:
+                return "air"
+            return "netherrack"
+        return subchunk(block, 8, idx)
+
+    for cx in range(-8, -5):
+        for cz in range(11, 14):
+            for idx in range(8):
+                db.put(chunk_key(cx, cz, 1, 0x2F) + bytes([idx]), nether(cx, cz, idx))
+            db.put(chunk_key(cx, cz, 1, 0x2C), b"\x28")
 
     # Chunk (0,-1) en el mundo normal: un cofre y un barril en la misma clave.
     shulker_tag = {"Items": [item("netherite_ingot", 32, 0), item("diamond_block", 3, 1)]}
@@ -146,7 +252,11 @@ def main():
     db.put(chunk_key(0, -1, 0, 0x32), nbt(minecart) + nbt(villager))
 
     # Primera compactación: lo anterior pasa a tablas .ldb.
+    db.put(chunk_key(2, 2, 0, 0x2F) + b"\x05", subchunk(lambda x, y, z: "gold_block" if (x == 0 and z == 0) else "air", 8, 5))
     db.compact()
+
+    # La torre del chunk (1,1) se reemplaza (versión más nueva): ahora llega a y 82.
+    db.put(chunk_key(1, 1, 0, 0x2F) + b"\x05", subchunk(lambda x, y, z: "red_wool" if (x == 8 and z == 8 and y <= 2) else "air", 8, 5))
 
     # Borrado y sobrescritura (más recientes que la tabla).
     db.delete(chunk_key(30, 30, 0, 0x31))
@@ -207,6 +317,12 @@ def main():
     db.put(b"~local_player", nbt(local))
     db.put(b"player_server_1b2c3d4e-0000-4000-8000-000000000001", nbt(other))
     db.put(b"player_9f8e7d6c", nbt({"MsaId": "9f8e7d6c", "SelfSignedId": "x", "ServerId": "player_server_1b2c3d4e-0000-4000-8000-000000000001"}))
+    # Se cierra y se vuelve a abrir: lo anterior pasa a una tabla de nivel 0 y lo
+    # siguiente queda en el registro (.log). Así hay tres fuentes con versiones distintas.
+    db.close(compact=False)
+    db = leveldb.LevelDB(os.path.join(world, "db"))
+    db.delete(chunk_key(2, 2, 0, 0x2F) + b"\x05")  # el bloque de oro desaparece
+    db.put(chunk_key(3, 3, 0, 0x2F) + b"\x05", subchunk(lambda x, y, z: "diamond_block" if (x == 15 and z == 15 and y == 0) else "air", 8, 5))
     db.close(compact=False)
 
     with open(os.path.join(world, "levelname.txt"), "w") as f:

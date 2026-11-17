@@ -1,9 +1,9 @@
 // Permite usar la app sin conexión una vez abierta (y que se pueda instalar).
-const CACHE = 'hardlands-v7';
+const CACHE = 'hardlands-v8';
 const FILES = [
   './', 'index.html', 'chunks.html', 'files.html', 'seed.html', 'css/style.css', 'manifest.webmanifest',
-  'js/app.js', 'js/worker.js', 'js/chunks.js', 'js/chunks-app.js', 'js/chunks-worker.js', 'js/files.js', 'js/files-app.js', 'js/files-worker.js', 'js/edit.js', 'js/version.js', 'js/seedfinder.js', 'js/seed-app.js', 'js/seed-worker.js', 'js/world.js', 'js/leveldb.js', 'js/nbt.js', 'js/zip.js', 'js/search.js', 'js/storage.js',
-  'vendor/fflate.js', 'vendor/cubiomes.wasm', 'data/names_es.json', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+  'js/app.js', 'js/worker.js', 'js/chunks.js', 'js/chunks-app.js', 'js/chunks-worker.js', 'js/files.js', 'js/files-app.js', 'js/files-worker.js', 'js/edit.js', 'js/terrain.js', 'js/version.js', 'js/seedfinder.js', 'js/seed-app.js', 'js/seed-worker.js', 'js/world.js', 'js/leveldb.js', 'js/nbt.js', 'js/zip.js', 'js/search.js', 'js/storage.js',
+  'vendor/fflate.js', 'vendor/cubiomes.wasm', 'data/names_es.json', 'data/block_colors.json', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {

@@ -3,11 +3,35 @@
 import { openZip } from './zip.js';
 import { findWorlds } from './world.js';
 import { analyzeChunks, selectChunks, buildEditedWorld } from './chunks.js';
+import { setBlockColors, renderDimension } from './terrain.js';
 
 let source = null; // { kind:'zip', zip } | { kind:'folder', files:[{path, file}] }
 let paths = [];
 let prefix = '';
 let analysis = null;
+let dbFiles = null;
+let terrainReq = 0; // petición de vista satélite en curso (las anteriores se cancelan)
+let colorsLoaded = null;
+
+function loadColors() {
+  colorsLoaded ||= fetch(new URL('../data/block_colors.json', import.meta.url))
+    .then((r) => (r.ok ? r.json() : {}))
+    .catch(() => ({}))
+    .then(setBlockColors);
+  return colorsLoaded;
+}
+
+async function terrain({ req, dim, mode }) {
+  terrainReq = req;
+  await loadColors();
+  if (!dbFiles || req !== terrainReq) return;
+  const out = await renderDimension(dbFiles, dim, mode, {
+    shouldStop: () => req !== terrainReq,
+    onProgress: (value) => req === terrainReq && postMessage({ type: 'terrainProgress', req, value }),
+  });
+  if (!out || req !== terrainReq) return;
+  postMessage({ type: 'terrain', req, dim, mode, chunks: out.chunks, tiles: out.tiles }, out.tiles.map((t) => t.data.buffer));
+}
 
 const progress = (value) => postMessage({ type: 'progress', value });
 const status = (text) => postMessage({ type: 'status', text });
@@ -24,7 +48,7 @@ function readerFor(path) {
 async function analyze(p) {
   prefix = p;
   const dbPrefix = prefix + 'db/';
-  const dbFiles = paths
+  dbFiles = paths
     .filter((x) => x.startsWith(dbPrefix) && !x.slice(dbPrefix.length).includes('/'))
     .map((x) => ({ name: x.slice(dbPrefix.length), ...readerFor(x) }));
 
@@ -74,6 +98,12 @@ self.onmessage = async ({ data }) => {
       else postMessage({ type: 'choose', worlds });
     } else if (data.type === 'analyze') {
       await analyze(data.prefix);
+    } else if (data.type === 'terrain') {
+      try {
+        await terrain(data);
+      } catch (e) {
+        postMessage({ type: 'terrainError', req: data.req, message: e?.message || String(e) });
+      }
     } else if (data.type === 'build') {
       status('Creando el mundo modificado…');
       const chunks = selectChunks(analysis, data.selection);

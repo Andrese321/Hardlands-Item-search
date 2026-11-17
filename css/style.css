@@ -412,3 +412,55 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .report-list li.hit > div:first-child::before { content: "★ "; color: var(--accent); font-weight: 700; }
 .report-list .best { color: var(--muted); margin-top: 2px; }
 .report-list .best .btn { display: inline-flex; width: auto; min-height: 28px; padding: 2px 10px; vertical-align: middle; }
+
+/* ---------- borrar chunks: herramientas y vista satélite ---------- */
+:root { --map-sel: rgba(210, 69, 59, 0.5); }
+.filters select#view-mode { flex: 1 1 200px; }
+.tool-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.seg { display: flex; flex: 1 1 100%; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+.seg button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px #0002; }
+.seg button[data-tool="paint"].active, .seg button[data-tool="erase"].active { color: var(--map-del); }
+.tool-opts { justify-content: space-between; }
+.inline { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+.inline select {
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.map-loading {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  background: #000a;
+  color: #fff;
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 99px;
+  pointer-events: none;
+}
+.slice-field { margin-top: 8px; }
+.slice-field label { font-size: 0.9rem; }
+.slice-field input { width: 100%; accent-color: var(--accent); min-height: 32px; }
+.slice-field p { margin: 0; }
+.sw-zone { background: transparent; border: 2px solid var(--map-zone); }
+#map.tool-paint, #map.tool-erase { cursor: cell; }
+#map.tool-move { cursor: grab; }
+.tool-actions { display: flex; gap: 6px; margin-left: auto; }

@@ -262,7 +262,7 @@ export function parseManifest(bytes) {
       }
     }
   }
-  return { liveTables: new Set(live.keys()), logNumber, prevLogNumber, nextFile, lastSequence };
+  return { liveTables: new Set(live.keys()), levels: live, logNumber, prevLogNumber, nextFile, lastSequence };
 }
 
 // ---------- tablas .ldb / .sst ----------
@@ -456,6 +456,80 @@ export async function readLevelDb(files, { wantKey = () => true, onProgress = ()
   const result = new Map();
   for (const [k, { value }] of entries) if (value) result.set(k, value);
   return { entries: result, warnings };
+}
+
+function compareBytes(a, b) {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return a.length - b.length;
+}
+
+/**
+ * Recorre la base de datos en el orden en que LevelDB busca una clave: primero
+ * los registros (.log), después las tablas de nivel 0 de la más nueva a la más
+ * vieja y luego los niveles 1, 2... Así, la PRIMERA vez que aparece una clave
+ * es su versión actual (o un borrado), sin tener que guardar todo en memoria.
+ * Dentro de cada fuente las claves llegan ordenadas, de modo que todas las de
+ * un mismo chunk van seguidas.
+ *
+ * Llama a onEntry(key, seq, value|null) solo para las claves que acepte
+ * `wantKey`, y a onSourceEnd() al terminar cada fichero.
+ */
+export async function scanLevelDbNewestFirst(files, { wantKey, onEntry, onSourceEnd = () => {}, onProgress = () => {}, shouldStop = () => false }) {
+  const byName = new Map(files.map((f) => [f.name, f]));
+  let manifest = null;
+  const current = byName.get('CURRENT');
+  if (current) {
+    const name = new TextDecoder().decode(await current.read()).trim();
+    const mf = byName.get(name);
+    if (mf) manifest = parseManifest(await mf.read());
+  }
+  const tables = [];
+  const logs = [];
+  for (const f of files) {
+    const num = fileNumber(f.name);
+    if (num < 0) continue;
+    if (/\.log$/.test(f.name)) {
+      if (!manifest || num >= manifest.logNumber || (manifest.prevLogNumber && num === manifest.prevLogNumber)) logs.push(f);
+    } else if (!manifest || manifest.liveTables.has(num)) {
+      // sin MANIFEST: todas como nivel 0 (la de número mayor es la más nueva)
+      tables.push({ f, num, level: manifest ? manifest.levels.get(num) : 0 });
+    }
+  }
+  tables.sort((a, b) => a.level - b.level || (a.level === 0 ? b.num - a.num : a.num - b.num));
+
+  const total = [...logs, ...tables.map((t) => t.f)].reduce((s, f) => s + (f.size || 0), 0) || 1;
+  let done = 0;
+
+  // Registros: pocos datos; se ordenan por clave y, a igual clave, del más nuevo al más viejo.
+  const fromLogs = [];
+  for (const f of logs) {
+    for (const rec of logRecords(await f.read())) {
+      try {
+        readWriteBatch(rec, (key, seq, value) => {
+          if (wantKey(key)) fromLogs.push({ key: key.slice(), seq, value: value ? value.slice() : null });
+        });
+      } catch {
+        // registro dañado: se ignora
+      }
+    }
+    done += f.size || 0;
+  }
+  fromLogs.sort((a, b) => compareBytes(a.key, b.key) || b.seq - a.seq);
+  for (const e of fromLogs) onEntry(e.key, e.seq, e.value);
+  onSourceEnd();
+  onProgress(done / total);
+
+  for (const { f } of tables) {
+    if (shouldStop()) return false;
+    readTable(await f.read(), (key, seq, value) => {
+      if (wantKey(key)) onEntry(key, seq, value);
+    });
+    onSourceEnd();
+    done += f.size || 0;
+    onProgress(done / total);
+  }
+  return true;
 }
 
 // ---------- escritura de un .log con borrados ----------

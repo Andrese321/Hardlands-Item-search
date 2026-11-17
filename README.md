@@ -18,9 +18,15 @@ objeto y te dice **dónde está** (coordenadas y dimensión) o **qué jugador lo
 Segunda herramienta, en la pestaña **Borrar chunks**: elimina zonas del mundo para que
 Minecraft las **vuelva a generar** desde la semilla (terreno, estructuras y minerales nuevos).
 
-- Hay un mapa de los chunks generados donde los que tienen cofres con objetos salen en otro color y también aparecen los jugadores. Se mueve con el dedo, se hace zoom con dos dedos y se marca una zona tocando dos esquinas.
+- **Vista satélite:** el mapa muestra el terreno real visto desde arriba (un píxel por bloque, con
+  sombreado de relieve, agua más oscura cuanto más profunda), así que se ven las construcciones.
+  En el Nether (y en cualquier dimensión) hay **corte en Y**: se ve el primer suelo por debajo de
+  esa altura, para mirar las cuevas bajo el techo de roca madre. También hay vista de cuadrícula.
+- **Herramientas:** Mover, **Pintar** y **Quitar** (se pasa el dedo por los chunks; pincel de 1, 3×3,
+  5×5 o 9×9) y Rectángulo (dos esquinas). Con dos dedos se mueve y se hace zoom. Hay **Deshacer**.
+- Los chunks con cofres con objetos y los jugadores se marcan sobre el mapa.
 - Las zonas también se pueden escribir: rectángulo (X1 Z1 X2 Z2) o punto y radio.
-- Hay dos modos: **borrar lo de dentro** de las zonas, o **borrar todo lo de fuera** (para reiniciar el mapa conservando las bases).
+- Hay dos modos: **borrar lo marcado**, o **borrar todo lo demás** (para reiniciar el mapa conservando las bases).
 - Antes de crear el archivo avisa de cuántos chunks, contenedores y objetos se perderán.
 - Borra todo lo del chunk: terreno, cofres, entidades (animales, objetos tirados…) y datos auxiliares.
 - **Nunca modifica el archivo original.** Crea uno nuevo (`<nombre>-chunks-borrados.mcworld/.zip`) con los mismos ficheros más un registro de borrado de LevelDB (`db/NNNNNN.log`). Al abrir el mundo, Minecraft aplica los borrados.
@@ -141,6 +147,8 @@ chunks.html             herramienta de borrar chunks
 js/chunks.js            análisis de chunks y creación del registro de borrado
 js/chunks-app.js        interfaz y mapa de la herramienta de chunks
 js/chunks-worker.js     trabajo pesado de la herramienta de chunks
+js/terrain.js           vista satélite: lectura de subchunks, columnas visibles y teselas
+data/block_colors.json  color de cada bloque (media de su textura oficial; tools/build-block-colors.py)
 files.html              explorador de archivos y estructuras
 js/files.js             extracción de estructuras (.mcstructure) y árbol de archivos
 js/files-app.js         interfaz del explorador
