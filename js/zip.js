@@ -139,12 +139,23 @@ export function storedEntry(name, bytes) {
   return { name, data: bytes, method: 0, crc: crc32(bytes), size: bytes.length, compSize: bytes.length, flags: 0, time, date };
 }
 
+const MAX32 = 0xffffffff;
+
+function setU64(view, pos, v) {
+  view.setUint32(pos, v % 4294967296, true);
+  view.setUint32(pos + 4, Math.floor(v / 4294967296), true);
+}
+
 /**
  * Crea un ZIP como Blob. Cada entrada lleva `data` (Blob o Uint8Array) ya
  * comprimida según `method`, con su crc y tamaños. Los Blob originales no se
  * copian a memoria: el navegador los encadena.
+ *
+ * Si algún tamaño o posición pasa de 4 GB (o hay más de 65 535 ficheros) se usa
+ * ZIP64, la ampliación del formato para archivos grandes. `forceZip64` lo
+ * fuerza siempre (para las pruebas).
  */
-export function buildZip(entries, type = 'application/zip') {
+export function buildZip(entries, type = 'application/zip', { forceZip64 = false } = {}) {
   const enc = new TextEncoder();
   const parts = [];
   const central = [];
@@ -152,49 +163,94 @@ export function buildZip(entries, type = 'application/zip') {
   for (const e of entries) {
     const name = enc.encode(e.name);
     const flags = (e.flags & ~0x0008) | 0x0800; // sin descriptor de datos; nombre en UTF-8
-    const lh = new Uint8Array(30 + name.length);
+    const big = forceZip64 || e.size >= MAX32 || e.compSize >= MAX32;
+    const farOffset = forceZip64 || offset >= MAX32;
+    const version = big || farOffset ? 45 : 20;
+
+    // Cabecera local (con extra ZIP64 de 20 bytes si el fichero es grande).
+    const lh = new Uint8Array(30 + name.length + (big ? 20 : 0));
     const lv = dv(lh);
     lv.setUint32(0, 0x04034b50, true);
-    lv.setUint16(4, 20, true);
+    lv.setUint16(4, version, true);
     lv.setUint16(6, flags, true);
     lv.setUint16(8, e.method, true);
     lv.setUint16(10, e.time, true);
     lv.setUint16(12, e.date, true);
     lv.setUint32(14, e.crc, true);
-    lv.setUint32(18, e.compSize, true);
-    lv.setUint32(22, e.size, true);
+    lv.setUint32(18, big ? MAX32 : e.compSize, true);
+    lv.setUint32(22, big ? MAX32 : e.size, true);
     lv.setUint16(26, name.length, true);
+    lv.setUint16(28, big ? 20 : 0, true);
     lh.set(name, 30);
+    if (big) {
+      const x = 30 + name.length;
+      lv.setUint16(x, 0x0001, true);
+      lv.setUint16(x + 2, 16, true);
+      setU64(lv, x + 4, e.size);
+      setU64(lv, x + 12, e.compSize);
+    }
 
-    const ch = new Uint8Array(46 + name.length);
+    // Entrada del directorio central: el extra ZIP64 lleva solo los campos que no caben.
+    const extra = [];
+    if (big) extra.push(e.size, e.compSize);
+    if (farOffset) extra.push(offset);
+    const ch = new Uint8Array(46 + name.length + (extra.length ? 4 + 8 * extra.length : 0));
     const cv = dv(ch);
     cv.setUint32(0, 0x02014b50, true);
-    cv.setUint16(4, 20, true);
-    cv.setUint16(6, 20, true);
+    cv.setUint16(4, version, true);
+    cv.setUint16(6, version, true);
     cv.setUint16(8, flags, true);
     cv.setUint16(10, e.method, true);
     cv.setUint16(12, e.time, true);
     cv.setUint16(14, e.date, true);
     cv.setUint32(16, e.crc, true);
-    cv.setUint32(20, e.compSize, true);
-    cv.setUint32(24, e.size, true);
+    cv.setUint32(20, big ? MAX32 : e.compSize, true);
+    cv.setUint32(24, big ? MAX32 : e.size, true);
     cv.setUint16(28, name.length, true);
-    cv.setUint32(42, offset, true);
+    cv.setUint16(30, extra.length ? 4 + 8 * extra.length : 0, true);
+    cv.setUint32(42, farOffset ? MAX32 : offset, true);
     ch.set(name, 46);
+    if (extra.length) {
+      const x = 46 + name.length;
+      cv.setUint16(x, 0x0001, true);
+      cv.setUint16(x + 2, 8 * extra.length, true);
+      extra.forEach((v, i) => setU64(cv, x + 4 + 8 * i, v));
+    }
     central.push(ch);
 
     parts.push(lh, e.data);
     offset += lh.length + e.compSize;
-    if (offset > 0xffffffff || e.size > 0xffffffff) throw new Error('El mundo es demasiado grande (más de 4 GB) para crear el archivo.');
   }
+
   const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const tail = [];
+  const zip64 = forceZip64 || entries.length > 0xffff || cdSize >= MAX32 || offset >= MAX32;
+  if (zip64) {
+    // Registro de fin ZIP64 + localizador
+    const z = new Uint8Array(56);
+    const zv = dv(z);
+    zv.setUint32(0, 0x06064b50, true);
+    setU64(zv, 4, 44);
+    zv.setUint16(12, 45, true);
+    zv.setUint16(14, 45, true);
+    setU64(zv, 24, entries.length);
+    setU64(zv, 32, entries.length);
+    setU64(zv, 40, cdSize);
+    setU64(zv, 48, offset);
+    const loc = new Uint8Array(20);
+    const locv = dv(loc);
+    locv.setUint32(0, 0x07064b50, true);
+    setU64(locv, 8, offset + cdSize);
+    locv.setUint32(16, 1, true);
+    tail.push(z, loc);
+  }
   const end = new Uint8Array(22);
   const ev = dv(end);
   ev.setUint32(0, 0x06054b50, true);
-  ev.setUint16(8, entries.length, true);
-  ev.setUint16(10, entries.length, true);
-  ev.setUint32(12, cdSize, true);
-  ev.setUint32(16, offset, true);
-  if (entries.length > 0xffff) throw new Error('El mundo tiene demasiados ficheros para crear el archivo.');
-  return new Blob([...parts, ...central, end], { type });
+  ev.setUint16(8, zip64 ? 0xffff : entries.length, true);
+  ev.setUint16(10, zip64 ? 0xffff : entries.length, true);
+  ev.setUint32(12, zip64 ? MAX32 : cdSize, true);
+  ev.setUint32(16, zip64 ? MAX32 : offset, true);
+  tail.push(end);
+  return new Blob([...parts, ...central, ...tail], { type });
 }

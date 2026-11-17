@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Prueba ZIP64 en el navegador</title>
+<pre id="out">Probando…</pre>
+<script type="module">
+// Crea en el navegador un ZIP de más de 4 GB (sin gastar memoria: un mismo bloque
+// de 64 MB repetido) y lo vuelve a leer. Abrir con un servidor local:
+//   npm start  →  http://localhost:8080/tests/browser-zip64.html
+import { buildZip, openZip, storedEntry } from '../js/zip.js';
+const out = document.getElementById('out');
+try {
+  const part = new Blob([new Uint8Array(64 * 1024 * 1024)]);
+  const BIG = 72 * part.size; // 4,5 GB
+  const big = new Blob(Array(72).fill(part));
+  const small = new TextEncoder().encode('level.dat de prueba');
+  const zip = buildZip([
+    storedEntry('antes.txt', new TextEncoder().encode('primero')),
+    { name: 'db/enorme.ldb', data: big, method: 0, crc: 0x12345678, size: BIG, compSize: BIG, flags: 0, time: 0, date: 33 },
+    storedEntry('level.dat', small),
+  ]);
+  const back = await openZip(zip);
+  const names = back.entries.map((e) => `${e.name}:${e.size}`).join(' ');
+  const ok = zip.size > BIG
+    && back.entries.length === 3
+    && back.entries[1].size === BIG
+    && back.entries[2].localOffset > 0xffffffff
+    && new TextDecoder().decode(await back.read(back.entries[2])) === 'level.dat de prueba'
+    && new TextDecoder().decode(await back.read(back.entries[0])) === 'primero';
+  out.textContent = (ok ? 'OK' : 'FALLO') + ` · tamaño ${zip.size} · ${names}`;
+} catch (e) {
+  out.textContent = 'ERROR ' + e.message;
+}
+</script>

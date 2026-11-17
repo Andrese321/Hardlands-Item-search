@@ -21,16 +21,17 @@ function loadColors() {
   return colorsLoaded;
 }
 
-async function terrain({ req, dim, mode }) {
+async function terrain({ req, dim, mode, res = 16 }) {
   terrainReq = req;
   await loadColors();
   if (!dbFiles || req !== terrainReq) return;
   const out = await renderDimension(dbFiles, dim, mode, {
+    res,
     shouldStop: () => req !== terrainReq,
     onProgress: (value) => req === terrainReq && postMessage({ type: 'terrainProgress', req, value }),
   });
   if (!out || req !== terrainReq) return;
-  postMessage({ type: 'terrain', req, dim, mode, chunks: out.chunks, tiles: out.tiles }, out.tiles.map((t) => t.data.buffer));
+  postMessage({ type: 'terrain', req, dim, mode, res: out.res, chunks: out.chunks, tiles: out.tiles }, out.tiles.map((t) => t.data.buffer));
 }
 
 const progress = (value) => postMessage({ type: 'progress', value });

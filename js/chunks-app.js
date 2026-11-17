@@ -2,6 +2,7 @@ import './version.js';
 import { inZones, blocksToChunkZone } from './chunks.js';
 import { TILE_CHUNKS } from './terrain.js';
 import { splitArchiveName } from './archive.js';
+import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError, isMobile } from './sizewarn.js';
 import { DIMENSIONS } from './search.js';
 
 const $ = (id) => document.getElementById(id);
@@ -56,8 +57,9 @@ function show(screen) {
 }
 
 function showError(message) {
+  markDone();
   show('screen-load');
-  $('error-text').textContent = message;
+  $('error-text').textContent = explainError(message);
   $('error').hidden = false;
 }
 
@@ -93,7 +95,8 @@ function startWorker() {
         show('screen-edit');
         updateSummary();
         $('result').hidden = false;
-        $('result').replaceChildren(h('strong', { class: 'danger' }, 'No se pudo crear el mundo: '), data.message);
+        markDone();
+        $('result').replaceChildren(h('strong', { class: 'danger' }, 'No se pudo crear el mundo: '), explainError(data.message));
       } else {
         showError(data.message);
       }
@@ -121,7 +124,10 @@ function open(message, name) {
 $('input-zip').addEventListener('change', (e) => {
   const f = e.target.files[0];
   e.target.value = '';
-  if (f) open({ type: 'open', zip: f }, f.name);
+  if (!f || !checkBeforeOpen(f.size, { tar: looksLikeTar(f.name), tool: 'chunks' })) return;
+  state.fileSize = f.size;
+  markStart(`«${f.name}»`, f.size);
+  open({ type: 'open', zip: f }, f.name);
 });
 
 $('input-folder').addEventListener('change', (e) => {
@@ -129,6 +135,10 @@ $('input-folder').addEventListener('change', (e) => {
   e.target.value = '';
   if (!files.length) return;
   const root = (files[0].webkitRelativePath || '').split('/')[0] || 'mundo';
+  const size = files.reduce((s, f) => s + f.size, 0);
+  if (!checkBeforeOpen(size, { tool: 'chunks' })) return;
+  state.fileSize = size;
+  markStart('la carpeta del mundo', size);
   open({ type: 'open', files }, root + '.zip');
 });
 
@@ -148,6 +158,7 @@ function chooseWorld(worlds) {
 }
 
 function onAnalyzed(data) {
+  markDone();
   state.worldName = data.worldName;
   state.dims = data.dims;
   state.players = data.players;
@@ -484,7 +495,18 @@ function terrainMode() {
   return m === 'slice' ? { type: 'slice', y: state.sliceY[state.dim] } : { type: 'top' };
 }
 
-const terrainKey = (dim, mode) => `${dim}|${mode.type === 'slice' ? 'y' + mode.y : 'top'}`;
+const terrainKey = (dim, mode, res) => `${dim}|${mode.type === 'slice' ? 'y' + mode.y : 'top'}|${res}`;
+
+// En mundos enormes la vista satélite se hace con menos detalle para no agotar
+// la memoria (sobre todo en el móvil): 16 = un píxel por bloque, 8 = 2×2, 4 = 4×4.
+function terrainRes() {
+  // ?satres=8 en la dirección fuerza la resolución (para pruebas)
+  const forced = Number(new URLSearchParams(location.search).get('satres'));
+  if ([4, 8, 16].includes(forced)) return forced;
+  const n = (state.dims[state.dim]?.length || 0) / 4;
+  const [full, half] = isMobile() ? [25000, 100000] : [80000, 300000];
+  return n <= full ? 16 : n <= half ? 8 : 4;
+}
 
 function syncViewControls() {
   const m = state.viewMode[state.dim];
@@ -502,8 +524,10 @@ function requestTerrain() {
   $('map-loading').hidden = true;
   if (m === 'grid' || !state.worker || !state.dims[state.dim]) return;
   const mode = terrainMode();
-  const key = terrainKey(state.dim, mode);
+  const res = terrainRes();
+  const key = terrainKey(state.dim, mode, res);
   state.terrainKey = key;
+  showSatNote(res);
   if (state.tiles.has(key)) {
     drawMap();
     return;
@@ -511,7 +535,8 @@ function requestTerrain() {
   const req = ++state.terrainReq;
   $('map-loading').hidden = false;
   $('map-loading').textContent = 'Cargando vista satélite…';
-  state.worker.postMessage({ type: 'terrain', req, dim: state.dim, mode });
+  markStart(`la vista satélite de «${state.worldName}»`, state.fileSize || 0);
+  state.worker.postMessage({ type: 'terrain', req, dim: state.dim, mode, res });
 }
 
 function onTerrainProgress(data) {
@@ -519,16 +544,25 @@ function onTerrainProgress(data) {
   $('map-loading').textContent = `Cargando vista satélite… ${Math.round(data.value * 100)} %`;
 }
 
+function showSatNote(res) {
+  const note = $('sat-note');
+  note.hidden = res === 16 || state.viewMode[state.dim] === 'grid';
+  const b = 16 / res;
+  note.textContent = `Mundo muy grande: la vista satélite se muestra simplificada (1 píxel = ${b}×${b} bloques) para no agotar la memoria${isMobile() ? ' del móvil' : ''}.`;
+}
+
 function onTerrain(data) {
-  const key = terrainKey(data.dim, data.mode);
+  markDone();
+  const key = terrainKey(data.dim, data.mode, data.res);
+  const px = TILE_CHUNKS * data.res;
   const tiles = new Map();
   for (const t of data.tiles) {
     const c = document.createElement('canvas');
-    c.width = c.height = TILE_CHUNKS * 16;
-    c.getContext('2d').putImageData(new ImageData(t.data, TILE_CHUNKS * 16, TILE_CHUNKS * 16), 0, 0);
+    c.width = c.height = px;
+    c.getContext('2d').putImageData(new ImageData(t.data, px, px), 0, 0);
     tiles.set(t.tx + ',' + t.tz, c);
   }
-  state.tiles.set(key, { tiles, chunks: data.chunks });
+  state.tiles.set(key, { tiles, chunks: data.chunks, res: data.res });
   if (data.req === state.terrainReq) {
     $('map-loading').hidden = !!data.chunks;
     if (!data.chunks) $('map-loading').textContent = 'No hay terreno guardado en esta dimensión';
@@ -537,13 +571,15 @@ function onTerrain(data) {
 }
 
 function onTerrainError(data) {
+  markDone();
   if (data.req !== state.terrainReq) return;
   $('map-loading').hidden = false;
-  $('map-loading').textContent = 'No se pudo cargar la vista satélite: ' + data.message;
+  $('map-loading').textContent = 'No se pudo cargar la vista satélite: ' + explainError(data.message) + ' Puedes usar la vista de cuadrícula.';
 }
 
 $('view-mode').addEventListener('change', (e) => {
   state.viewMode[state.dim] = e.target.value;
+  $('sat-note').hidden = true;
   syncViewControls();
   requestTerrain();
   drawMap();
@@ -647,7 +683,7 @@ function paint() {
       ctx.fillRect(x, y, size, size);
     }
     ctx.globalAlpha = 1;
-    ctx.imageSmoothingEnabled = s < 16;
+    ctx.imageSmoothingEnabled = s < sat.res;
     const tsz = TILE_CHUNKS * s;
     for (const [k, tile] of sat.tiles) {
       const comma = k.indexOf(',');
@@ -867,6 +903,7 @@ window.addEventListener('resize', drawMap);
 if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', drawMap);
 
 setTool('move');
+checkPreviousCrash();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

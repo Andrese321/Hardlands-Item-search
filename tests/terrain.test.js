@@ -152,3 +152,33 @@ test('subchunk dañado o de formato antiguo no rompe la vista', () => {
   assert.equal(cols.h.length, 256);
   assert.ok(composeTiles(new Map(), { type: 'top' }).length === 0);
 });
+
+test('resolución reducida para mundos enormes: mismas columnas muestreadas y teselas más pequeñas', async () => {
+  const full = new Map();
+  const half = new Map();
+  const quarter = new Map();
+  await renderDimension(db, 0, { type: 'top' }, { keepColumns: full });
+  const outHalf = await renderDimension(db, 0, { type: 'top' }, { keepColumns: half, res: 8 });
+  const outQuarter = await renderDimension(db, 0, { type: 'top' }, { keepColumns: quarter, res: 4 });
+  assert.equal(outHalf.res, 8);
+  assert.equal(outHalf.tiles[0].data.length, (16 * 8) ** 2 * 4);
+  assert.equal(outQuarter.tiles[0].data.length, (16 * 4) ** 2 * 4);
+  for (const [res, cols] of [[8, half], [4, quarter]]) {
+    const step = 16 / res;
+    for (const [key, ch] of cols) {
+      const f = full.get(key);
+      assert.equal(ch.h.length, res * res);
+      for (let zi = 0; zi < res; zi++) {
+        for (let xi = 0; xi < res; xi++) {
+          const i = zi * res + xi;
+          const j = ((zi * step) << 4) | (xi * step);
+          assert.equal(ch.h[i], f.h[j], `${key} ${res}`);
+          assert.equal(ch.c[i], f.c[j]);
+        }
+      }
+    }
+  }
+  // el Nether con corte también
+  const n = await renderDimension(db, 1, { type: 'slice', y: 100 }, { res: 4 });
+  assert.equal(n.chunks, 9);
+});

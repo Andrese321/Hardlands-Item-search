@@ -215,15 +215,20 @@ export function decodeSubChunk(bytes) {
 export const NO_HEIGHT = -32768;
 
 /**
- * Calcula qué se ve en cada una de las 256 columnas de un chunk.
+ * Calcula qué se ve en las columnas de un chunk.
  * @param subs Map<índiceY, Uint8Array> subchunks (valor de LevelDB) del chunk
  * @param mode { type: 'top' } o { type: 'slice', y }
+ * @param res columnas por lado: 16 (todas), 8 (una de cada 2×2) o 4 (una de cada 4×4).
+ *        En mundos enormes se usa menos para que la vista quepa en la memoria del móvil.
  * @returns { h: Int16Array, c: Uint16Array, d: Uint8Array } altura, estilo y profundidad de agua
+ *          (res × res valores, fila a fila de norte a sur)
  */
-export function renderColumns(subs, mode) {
-  const h = new Int16Array(256).fill(NO_HEIGHT);
-  const c = new Uint16Array(256);
-  const d = new Uint8Array(256);
+export function renderColumns(subs, mode, res = 16) {
+  const n = res * res;
+  const step = 16 / res;
+  const h = new Int16Array(n).fill(NO_HEIGHT);
+  const c = new Uint16Array(n);
+  const d = new Uint8Array(n);
   if (!subs.size) return { h, c, d };
 
   const decoded = new Map();
@@ -250,9 +255,9 @@ export function renderColumns(subs, mode) {
   const top = mode.type === 'slice' ? Math.min(mode.y, maxIdx * 16 + 15) : maxIdx * 16 + 15;
   const bottom = minIdx * 16;
 
-  for (let col = 0; col < 256; col++) {
-    const x = col & 15;
-    const z = col >> 4;
+  for (let col = 0; col < n; col++) {
+    const x = (col % res) * step;
+    const z = Math.floor(col / res) * step;
     const base = (x << 8) | (z << 4);
     let waterTop = NO_HEIGHT;
     let state = 0; // corte: 0 inicio, 1 dentro de bloques, 2 en aire
@@ -320,27 +325,29 @@ export function renderColumns(subs, mode) {
 // ---------------------------------------------------------------- imagen
 
 export const TILE_CHUNKS = 16; // cada tesela de imagen cubre 16×16 chunks (256×256 píxeles)
-const TILE_PX = TILE_CHUNKS * 16;
 
 /**
  * Convierte las columnas de todos los chunks en teselas RGBA con sombreado de
  * relieve (luz desde el noroeste).
- * @param chunks Map<"x,z", {h, c, d}>
- * @returns Array<{ tx, tz, data: Uint8ClampedArray }>
+ * @param chunks Map<"x,z", {h, c, d}> (res × res columnas por chunk)
+ * @param res píxeles por lado de chunk (16 = un píxel por bloque)
+ * @returns Array<{ tx, tz, data: Uint8ClampedArray }> teselas de (TILE_CHUNKS·res)² píxeles
  */
-export function composeTiles(chunks, mode) {
+export function composeTiles(chunks, mode, res = 16) {
+  const TILE_PX = TILE_CHUNKS * res;
+  const step = 16 / res;
   const tiles = new Map();
   const heightAt = (cx, cz, x, z, fallback) => {
     if (x < 0) {
       cx--;
-      x += 16;
+      x += res;
     }
     if (z < 0) {
       cz--;
-      z += 16;
+      z += res;
     }
     const ch = chunks.get(cx + ',' + cz);
-    const v = ch ? ch.h[(z << 4) | x] : NO_HEIGHT;
+    const v = ch ? ch.h[z * res + x] : NO_HEIGHT;
     return v === NO_HEIGHT ? fallback : v;
   };
   for (const [key, ch] of chunks) {
@@ -355,11 +362,11 @@ export function composeTiles(chunks, mode) {
       tile = { tx, tz, data: new Uint8ClampedArray(TILE_PX * TILE_PX * 4) };
       tiles.set(tkey, tile);
     }
-    const ox = (cx - tx * TILE_CHUNKS) * 16;
-    const oz = (cz - tz * TILE_CHUNKS) * 16;
-    for (let col = 0; col < 256; col++) {
-      const x = col & 15;
-      const z = col >> 4;
+    const ox = (cx - tx * TILE_CHUNKS) * res;
+    const oz = (cz - tz * TILE_CHUNKS) * res;
+    for (let col = 0; col < res * res; col++) {
+      const x = col % res;
+      const z = Math.floor(col / res);
       const p = ((oz + z) * TILE_PX + ox + x) * 4;
       const hh = ch.h[col];
       if (hh === NO_HEIGHT) {
@@ -379,7 +386,7 @@ export function composeTiles(chunks, mode) {
       } else {
         const hn = heightAt(cx, cz, x, z - 1, hh);
         const hw = heightAt(cx, cz, x - 1, z, hh);
-        const dh = hh - hn + (hh - hw);
+        const dh = (hh - hn + (hh - hw)) / step; // con menos resolución, las vecinas están más lejos
         f = 1 + Math.max(-6, Math.min(6, dh)) * 0.055;
       }
       tile.data[p] = ((rgb >> 16) & 255) * f;
@@ -404,7 +411,7 @@ function i32(b, p) {
  * @param mode { type: 'top' } o { type: 'slice', y }
  * @returns { tiles, chunks } o null si se canceló
  */
-export async function renderDimension(dbFiles, dim, mode, { onProgress = () => {}, shouldStop = () => false, keepColumns = null } = {}) {
+export async function renderDimension(dbFiles, dim, mode, { onProgress = () => {}, shouldStop = () => false, keepColumns = null, res = 16 } = {}) {
   const keyLen = dim ? 14 : 10;
   const tagPos = dim ? 12 : 8;
   const wantKey = (k) => k.length === keyLen && k[tagPos] === 47 && (!dim || i32(k, 8) === dim);
@@ -416,12 +423,12 @@ export async function renderDimension(dbFiles, dim, mode, { onProgress = () => {
 
   const flush = () => {
     if (groupKey !== null && group.size) {
-      const cols = renderColumns(group, mode);
+      const cols = renderColumns(group, mode, res);
       const prev = result.get(groupKey);
       if (!prev) result.set(groupKey, cols);
       else {
         // el chunk está repartido en varios ficheros: se combina columna a columna
-        for (let i = 0; i < 256; i++) {
+        for (let i = 0; i < res * res; i++) {
           if (cols.h[i] > prev.h[i]) {
             prev.h[i] = cols.h[i];
             prev.c[i] = cols.c[i];
@@ -454,7 +461,7 @@ export async function renderDimension(dbFiles, dim, mode, { onProgress = () => {
   if (!finished) return null;
   flush();
   if (keepColumns) for (const [k, v] of result) keepColumns.set(k, v); // para las pruebas
-  const tiles = composeTiles(result, mode);
+  const tiles = composeTiles(result, mode, res);
   onProgress(1);
-  return { tiles, chunks: result.size };
+  return { tiles, chunks: result.size, res };
 }

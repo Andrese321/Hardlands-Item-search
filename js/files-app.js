@@ -1,6 +1,7 @@
 import './version.js';
 import { buildTree } from './files.js';
 import { splitArchiveName } from './archive.js';
+import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError } from './sizewarn.js';
 import { itemLabel } from './search.js';
 
 const $ = (id) => document.getElementById(id);
@@ -38,8 +39,9 @@ function show(screen) {
 }
 
 function showError(message) {
+  markDone();
   if ($('screen-files').hidden) show('screen-load');
-  $('error-text').textContent = message;
+  $('error-text').textContent = explainError(message);
   $('error').hidden = false;
 }
 
@@ -96,8 +98,9 @@ function progressScreen() {
 $('input-zip').addEventListener('change', (e) => {
   const f = e.target.files[0];
   e.target.value = '';
-  if (!f) return;
+  if (!f || !checkBeforeOpen(f.size, { tar: looksLikeTar(f.name), tool: 'files' })) return;
   ({ base: state.archiveName, ext: state.ext } = splitArchiveName(f.name));
+  markStart(`«${f.name}»`, f.size);
   progressScreen();
   startWorker().postMessage({ type: 'open', zip: f });
 });
@@ -105,9 +108,11 @@ $('input-zip').addEventListener('change', (e) => {
 $('input-folder').addEventListener('change', (e) => {
   const files = [...e.target.files];
   e.target.value = '';
-  if (!files.length) return;
+  const size = files.reduce((s, f) => s + f.size, 0);
+  if (!files.length || !checkBeforeOpen(size, { tool: 'files' })) return;
   state.archiveName = (files[0].webkitRelativePath || '').split('/')[0] || 'mundo';
   state.ext = '.zip';
+  markStart('la carpeta del mundo', size);
   progressScreen();
   startWorker().postMessage({ type: 'open', files });
 });
@@ -128,6 +133,7 @@ function chooseWorld(worlds) {
 }
 
 function onScanned(data) {
+  markDone();
   state.structures = data.structures;
   state.canEdit = data.canEdit;
   state.editBlocked = data.editBlocked || '';
@@ -262,7 +268,8 @@ function deleteFailed(message) {
   show('screen-files');
   const r = $('delete-result');
   r.hidden = false;
-  r.replaceChildren(h('strong', { class: 'danger' }, 'No se pudo crear la copia: '), message);
+  markDone();
+  r.replaceChildren(h('strong', { class: 'danger' }, 'No se pudo crear la copia: '), explainError(message));
 }
 
 function onDeleted(data) {
@@ -375,5 +382,6 @@ for (const t of document.querySelectorAll('.tab')) t.addEventListener('click', (
   } catch {
     /* nombres en inglés */
   }
+  checkPreviousCrash();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

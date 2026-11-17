@@ -113,6 +113,23 @@ dispositivo para no tener que volver a abrirlo.
 > Haz la copia con el servidor apagado, o después de `save hold` / `save query`
 > (y luego `save resume`), para que los datos estén al día.
 
+## Mundos grandes
+
+- **En el móvil** va bien con mundos de hasta ~1 GB (mejor en .mcworld o .zip). Más grandes
+  pueden tardar muchísimo o hacer que el navegador cierre la página por falta de memoria.
+- Al abrir un archivo grande, la app **avisa según el tamaño**, el formato y el dispositivo:
+  tiempo aproximado, espacio libre que hará falta y la recomendación de usar un ordenador. Si el
+  riesgo es alto (por ejemplo 4 GB o más en el móvil, o un .tar.gz de 1,5 GB o más), pide
+  confirmación antes de empezar. Si la página se cerró a mitad de un archivo grande, lo avisa la
+  próxima vez.
+- Los **.tar.gz** hay que descomprimirlos enteros en el navegador: para mundos grandes es mucho
+  mejor un .zip, que se lee por partes.
+- El mundo modificado puede pasar de **4 GB** (se usa ZIP64). Probado en el navegador con un
+  archivo de 4,5 GB (`tests/browser-zip64.html`).
+- La **vista satélite** se simplifica sola en mundos enormes (1 píxel = 2×2 o 4×4 bloques) para
+  no agotar la memoria. `?satres=16|8|4` en la dirección la fuerza.
+- Velocidad aproximada: unos 40 MB/s en un ordenador y 10–15 MB/s en un móvil.
+
 ## Limitaciones
 
 - **Nombres de jugadores:** Bedrock no guarda el gamertag dentro del mundo, solo un
@@ -144,6 +161,7 @@ js/app.js               lógica de la interfaz
 js/worker.js            lectura del mundo en segundo plano
 js/zip.js               lector de .zip/.mcworld (bajo demanda, sin cargarlo entero)
 js/archive.js           abre .zip/.mcworld, .tar.gz/.tgz y .tar (detecta el formato por el contenido)
+js/sizewarn.js          avisos según el tamaño del archivo y detección de cierres por memoria
 js/leveldb.js           lector de la LevelDB de Mojang (zlib/raw, .ldb, .log, MANIFEST)
 js/nbt.js               lector de NBT little-endian
 js/world.js             extracción de objetos (contenedores, entidades, jugadores)

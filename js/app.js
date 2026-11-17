@@ -4,6 +4,7 @@ import {
   DIMENSIONS, CONTAINERS, PLAYER_SECTIONS, EXACT,
 } from './search.js';
 import { saveIndex, loadIndex, getAliases, setAlias } from './storage.js';
+import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError } from './sizewarn.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -43,6 +44,8 @@ function show(screen) {
 }
 
 function showError(message) {
+  markDone();
+  message = explainError(message);
   for (const id of ['screen-progress', 'screen-choose']) $(id).hidden = true;
   $('screen-load').hidden = false;
   $('error-text').textContent = message;
@@ -72,6 +75,7 @@ function startWorker() {
     } else if (data.type === 'choose') {
       chooseWorld(data.worlds);
     } else if (data.type === 'done') {
+      markDone();
       worker.terminate();
       state.worker = null;
       onIndex(data.index, true);
@@ -115,13 +119,18 @@ function chooseWorld(worlds) {
 $('input-zip').addEventListener('change', (e) => {
   const file = e.target.files[0];
   e.target.value = '';
-  if (file) beginScan({ type: 'open', zip: file });
+  if (!file || !checkBeforeOpen(file.size, { tar: looksLikeTar(file.name), tool: 'items' })) return;
+  markStart(`«${file.name}»`, file.size);
+  beginScan({ type: 'open', zip: file });
 });
 
 $('input-folder').addEventListener('change', (e) => {
   const files = [...e.target.files];
   e.target.value = '';
-  if (files.length) beginScan({ type: 'open', files });
+  const size = files.reduce((s, f) => s + f.size, 0);
+  if (!files.length || !checkBeforeOpen(size, { tool: 'items' })) return;
+  markStart('la carpeta del mundo', size);
+  beginScan({ type: 'open', files });
 });
 
 $('btn-error').addEventListener('click', () => {
@@ -427,6 +436,7 @@ async function init() {
   } catch {
     /* sin traducciones: se usarán los nombres en inglés */
   }
+  checkPreviousCrash();
   refreshCached();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -466,3 +466,24 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .tool-actions { display: flex; gap: 6px; margin-left: auto; }
 .steps-title { margin: 14px 0 0; font-weight: 700; font-size: 0.92rem; }
 #result .btn + .btn, #delete-result .btn + .btn { margin-top: 8px; }
+
+/* ---------- avisos por tamaño ---------- */
+.size-alert {
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 2px solid;
+  font-size: 0.92rem;
+}
+.size-alert strong { display: block; font-size: 1.02rem; margin-bottom: 4px; }
+.size-alert ul { margin: 4px 0 8px; padding-left: 18px; }
+.size-alert li { margin: 4px 0; }
+.size-alert .btn { width: auto; margin: 0; }
+.size-alert-info { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+.size-alert-warn { background: var(--warn-bg); color: var(--warn-text); border-color: #d99a1e; }
+.size-alert-danger { background: #fde4e1; color: #7a1712; border-color: #d2453b; }
+@media (prefers-color-scheme: dark) {
+  .size-alert-danger { background: #3b1513; color: #ffd2cc; border-color: #ff6b5e; }
+}
+.size-hint { margin: 12px 0 0; }
+.sat-note { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 6px 10px; margin: 8px 0 0; }

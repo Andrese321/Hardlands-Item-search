@@ -1,5 +1,6 @@
 import './version.js';
 import { STRUCTURES, BIOME_NAMES, parseSeed, planTasks, mergeResults } from './seedfinder.js';
+import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError } from './sizewarn.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = new Intl.NumberFormat('es-ES', { useGrouping: 'always' });
@@ -113,7 +114,8 @@ async function copy(text) {
 }
 
 function showError(message) {
-  $('error-text').textContent = message;
+  markDone();
+  $('error-text').textContent = explainError(message);
   $('error').hidden = false;
 }
 
@@ -191,6 +193,10 @@ $('input-world').addEventListener('change', (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
+  // Un .zip solo necesita el level.dat; un .tar.gz hay que descomprimirlo entero.
+  const tar = looksLikeTar(f.name);
+  if (!checkBeforeOpen(f.size, { tar, tool: 'seed' })) return;
+  if (tar) markStart(`«${f.name}»`, f.size);
   $('error').hidden = true;
   stopPool();
   setBusy(true, 'Leyendo la semilla del mundo…');
@@ -202,6 +208,7 @@ $('input-world').addEventListener('change', (e) => {
   };
   w.onmessage = ({ data }) => {
     finish();
+    markDone();
     if (data.type === 'seed') onSeed(data);
     else showError(data.message);
   };
@@ -447,6 +454,8 @@ function render() {
 
 $('sort').addEventListener('change', applyView);
 $('only3').addEventListener('change', applyView);
+
+checkPreviousCrash();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
