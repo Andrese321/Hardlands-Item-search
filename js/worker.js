@@ -1,13 +1,23 @@
 // Trabajo pesado (descomprimir y leer el mundo) fuera del hilo de la interfaz.
 
-import { openZip } from './zip.js';
+import { openArchive } from './archive.js';
 import { findWorlds, scanWorld } from './world.js';
 
 let files = null;
 
+// Progreso al descomprimir un .tar.gz (que hay que leer entero antes de empezar).
+let lastPct = -1;
+function unpackProgress(p) {
+  const pct = Math.floor(p * 100);
+  if (pct === lastPct) return;
+  lastPct = pct;
+  postMessage({ type: 'status', text: `Descomprimiendo el archivo… ${pct} %` });
+  postMessage({ type: 'progress', value: p });
+}
+
 async function fromZip(file) {
-  const zip = await openZip(file);
-  return zip.entries.map((e) => ({ path: e.name, size: e.size, read: () => zip.read(e) }));
+  const arc = await openArchive(file, { onProgress: unpackProgress });
+  return arc.entries.map((e) => ({ path: e.name, size: e.size, read: () => arc.read(e) }));
 }
 
 function fromFolder(list) {

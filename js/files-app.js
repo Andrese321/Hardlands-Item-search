@@ -1,5 +1,6 @@
 import './version.js';
 import { buildTree } from './files.js';
+import { splitArchiveName } from './archive.js';
 import { itemLabel } from './search.js';
 
 const $ = (id) => document.getElementById(id);
@@ -96,8 +97,7 @@ $('input-zip').addEventListener('change', (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
-  state.archiveName = f.name.replace(/\.[^.]+$/, '') || 'mundo';
-  state.ext = /\.mcworld$/i.test(f.name) ? '.mcworld' : '.zip';
+  ({ base: state.archiveName, ext: state.ext } = splitArchiveName(f.name));
   progressScreen();
   startWorker().postMessage({ type: 'open', zip: f });
 });

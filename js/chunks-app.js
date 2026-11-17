@@ -1,6 +1,7 @@
 import './version.js';
 import { inZones, blocksToChunkZone } from './chunks.js';
 import { TILE_CHUNKS } from './terrain.js';
+import { splitArchiveName } from './archive.js';
 import { DIMENSIONS } from './search.js';
 
 const $ = (id) => document.getElementById(id);
@@ -110,9 +111,9 @@ function progressScreen() {
 }
 
 function open(message, name) {
-  const m = /^(.*?)(\.mcworld|\.zip)?$/i.exec(name || 'mundo');
-  state.fileName = m[1] || 'mundo';
-  state.ext = (m[2] || '.zip').toLowerCase();
+  const { base, ext } = splitArchiveName(name);
+  state.fileName = base;
+  state.ext = ext;
   progressScreen();
   startWorker().postMessage(message);
 }

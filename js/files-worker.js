@@ -1,6 +1,7 @@
 // Trabajo pesado del explorador de archivos (fuera del hilo de la interfaz).
 
-import { openZip, buildZip, storedEntry } from './zip.js';
+import { buildZip, storedEntry } from './zip.js';
+import { openArchive } from './archive.js';
 import { findWorlds } from './world.js';
 import { findStructures, describeStructure, structureFileName } from './files.js';
 import { buildWorldWithDeletions } from './edit.js';
@@ -18,9 +19,18 @@ const status = (text) => postMessage({ type: 'status', text });
 async function open(data) {
   status('Abriendo archivo…');
   if (data.zip) {
-    const zip = await openZip(data.zip);
-    source = { kind: 'zip', zip };
-    entries = zip.entries.map((e) => ({ path: e.name, size: e.size, read: () => zip.read(e) }));
+    let lastPct = -1;
+    const arc = await openArchive(data.zip, {
+      onProgress: (p) => {
+        const pct = Math.floor(p * 100);
+        if (pct === lastPct) return;
+        lastPct = pct;
+        status(`Descomprimiendo el archivo… ${pct} %`);
+        postMessage({ type: 'progress', value: p });
+      },
+    });
+    source = arc.editSource;
+    entries = arc.entries.map((e) => ({ path: e.name, size: e.size, read: () => arc.read(e) }));
   } else {
     const files = data.files.map((f) => ({ path: (f.webkitRelativePath || f.name).replace(/\\/g, '/'), file: f }));
     source = { kind: 'folder', files };

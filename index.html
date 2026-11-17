@@ -33,8 +33,8 @@
         <h2>Abre el mundo</h2>
         <p class="muted">Elige el archivo del mundo. Se lee <strong>solo en tu dispositivo</strong>: no se sube a ningún sitio y no se modifica.</p>
         <label class="btn primary file-btn">
-          <input id="input-zip" type="file" accept=".mcworld,.zip,application/zip,application/octet-stream">
-          Abrir archivo .mcworld o .zip
+          <input id="input-zip" type="file" accept=".mcworld,.zip,.tar,.gz,.tgz,application/gzip,application/x-gzip,application/x-tar,application/x-compressed-tar,application/zip,application/octet-stream">
+          Abrir archivo .mcworld, .zip o .tar.gz
         </label>
         <label class="btn file-btn">
           <input id="input-folder" type="file" webkitdirectory directory multiple>
@@ -50,7 +50,7 @@
         <summary>¿Cómo consigo el archivo del mundo?</summary>
         <ul>
           <li><strong>Servidor dedicado (BDS):</strong> copia la carpeta <code>worlds/&lt;nombre del mundo&gt;</code> y comprímela en .zip (o ábrela como carpeta en PC).</li>
-          <li><strong>Hosting (Aternos, Apex, etc.):</strong> descarga una copia de seguridad del mundo desde el panel o por FTP. El .zip descargado sirve tal cual.</li>
+          <li><strong>Hosting (Aternos, Apex, etc.):</strong> descarga una copia de seguridad del mundo desde el panel o por FTP. El .zip o .tar.gz descargado sirve tal cual.</li>
           <li><strong>Realm:</strong> en los ajustes del Realm usa <em>Descargar mundo</em>; el mundo aparecerá entre tus mundos locales y desde ahí lo exportas como .mcworld.</li>
           <li><strong>Mundo local:</strong> en Minecraft, <em>Editar mundo → Exportar mundo</em> crea un .mcworld.</li>
         </ul>

@@ -1,7 +1,7 @@
 // Trabajo pesado del buscador por semilla (fuera del hilo de la interfaz).
 
 import { loadBiomes, runTask } from './seedfinder.js';
-import { openZip } from './zip.js';
+import { openArchive } from './archive.js';
 import { readNbt } from './nbt.js';
 
 let biomesPromise = null;
@@ -35,10 +35,10 @@ async function levelDatFrom(data) {
     return readLevelDat(new Uint8Array(await data.zip.arrayBuffer()));
   }
   if (data.zip) {
-    const zip = await openZip(data.zip);
-    candidates = zip.entries
+    const arc = await openArchive(data.zip);
+    candidates = arc.entries
       .filter((e) => /(^|\/)level\.dat$/.test(e.name))
-      .map((e) => ({ path: e.name, read: () => zip.read(e) }));
+      .map((e) => ({ path: e.name, read: () => arc.read(e) }));
   } else {
     candidates = data.files
       .map((f) => ({ path: (f.webkitRelativePath || f.name).replace(/\\/g, '/'), file: f }))

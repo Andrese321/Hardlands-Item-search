@@ -104,10 +104,10 @@ dispositivo para no tener que volver a abrirlo.
 
 1. Consigue el archivo del mundo:
    - **Servidor dedicado (BDS):** la carpeta `worlds/<mundo>`, comprimida en .zip.
-   - **Hosting:** descarga una copia de seguridad del mundo (el .zip sirve tal cual).
+   - **Hosting:** descarga una copia de seguridad del mundo (el .zip o .tar.gz sirve tal cual).
    - **Realm:** *Descargar mundo* en los ajustes del Realm y luego *Exportar mundo* (.mcworld).
    - **Mundo local:** *Editar mundo → Exportar mundo* (.mcworld).
-2. Abre la app y pulsa **Abrir archivo .mcworld o .zip** (en PC también puedes abrir la carpeta).
+2. Abre la app y pulsa **Abrir archivo** y elige el **.mcworld, .zip o .tar.gz** (en PC también puedes abrir la carpeta).
 3. Escribe el nombre del objeto.
 
 > Haz la copia con el servidor apagado, o después de `save hold` / `save query`
@@ -143,6 +143,7 @@ index.html, css/        interfaz
 js/app.js               lógica de la interfaz
 js/worker.js            lectura del mundo en segundo plano
 js/zip.js               lector de .zip/.mcworld (bajo demanda, sin cargarlo entero)
+js/archive.js           abre .zip/.mcworld, .tar.gz/.tgz y .tar (detecta el formato por el contenido)
 js/leveldb.js           lector de la LevelDB de Mojang (zlib/raw, .ldb, .log, MANIFEST)
 js/nbt.js               lector de NBT little-endian
 js/world.js             extracción de objetos (contenedores, entidades, jugadores)

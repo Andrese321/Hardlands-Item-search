@@ -1,6 +1,6 @@
 // Trabajo pesado de la herramienta de borrar chunks (fuera del hilo de la interfaz).
 
-import { openZip } from './zip.js';
+import { openArchive } from './archive.js';
 import { findWorlds } from './world.js';
 import { analyzeChunks, selectChunks, buildEditedWorld } from './chunks.js';
 import { setBlockColors, renderDimension } from './terrain.js';
@@ -34,6 +34,14 @@ async function terrain({ req, dim, mode }) {
 }
 
 const progress = (value) => postMessage({ type: 'progress', value });
+let lastPct = -1;
+function unpackProgress(p) {
+  const pct = Math.floor(p * 100);
+  if (pct === lastPct) return;
+  lastPct = pct;
+  postMessage({ type: 'status', text: `Descomprimiendo el archivo… ${pct} %` });
+  progress(p);
+}
 const status = (text) => postMessage({ type: 'status', text });
 
 function readerFor(path) {
@@ -84,9 +92,9 @@ self.onmessage = async ({ data }) => {
     if (data.type === 'open') {
       status('Abriendo archivo…');
       if (data.zip) {
-        const zip = await openZip(data.zip);
-        source = { kind: 'zip', zip };
-        paths = zip.entries.map((e) => e.name);
+        const arc = await openArchive(data.zip, { onProgress: unpackProgress });
+        source = arc.editSource;
+        paths = arc.entries.map((e) => e.name);
       } else {
         const files = data.files.map((f) => ({ path: (f.webkitRelativePath || f.name).replace(/\\/g, '/'), file: f }));
         source = { kind: 'folder', files };
