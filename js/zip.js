@@ -144,7 +144,7 @@ export function storedEntry(name, bytes) {
  * comprimida según `method`, con su crc y tamaños. Los Blob originales no se
  * copian a memoria: el navegador los encadena.
  */
-export function buildZip(entries) {
+export function buildZip(entries, type = 'application/zip') {
   const enc = new TextEncoder();
   const parts = [];
   const central = [];
@@ -196,5 +196,5 @@ export function buildZip(entries) {
   ev.setUint32(12, cdSize, true);
   ev.setUint32(16, offset, true);
   if (entries.length > 0xffff) throw new Error('El mundo tiene demasiados ficheros para crear el archivo.');
-  return new Blob([...parts, ...central, end], { type: 'application/zip' });
+  return new Blob([...parts, ...central, end], { type });
 }

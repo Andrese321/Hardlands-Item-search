@@ -268,23 +268,53 @@ function deleteFailed(message) {
 function onDeleted(data) {
   state.deleting = false;
   show('screen-files');
-  if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
-  state.downloadUrl = URL.createObjectURL(data.blob);
-  const name = `${state.archiveName}-sin-estructuras${state.ext}`;
   const r = $('delete-result');
   r.hidden = false;
   r.replaceChildren(
     h('h2', {}, 'Copia del mundo lista'),
     h('p', {}, `Sin ${data.names.length === 1 ? 'la estructura' : `las ${data.names.length} estructuras`}: ${data.names.join(', ')}. ` +
-      `Archivo: ${size(data.blob.size)}.`),
-    h('a', { class: 'btn primary', href: state.downloadUrl, download: name }, 'Descargar ' + name),
-    h('ol', { class: 'result-steps' },
-      h('li', {}, 'Con el servidor apagado, sube este archivo como copia de seguridad a restaurar (o reemplaza la carpeta del mundo).'),
-      h('li', {}, 'Al abrir el mundo, Minecraft aplica el borrado: esas estructuras ya no aparecerán en el bloque de estructuras ni en /structure load.'),
-      h('li', {}, 'Las construcciones que ya estén puestas en el mapa no se tocan: solo se borra la plantilla guardada.')),
+      'Las construcciones que ya estén puestas en el mapa no se tocan: solo se borra la plantilla guardada.'),
+    ...downloadLinks(data, `${state.archiveName}-sin-estructuras`, state.ext),
   );
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
   toast('Copia del mundo lista para descargar');
+}
+
+// Botones de descarga del mundo modificado: .mcworld (para abrir con Minecraft
+// en el móvil) y .zip con la misma estructura que el original (para servidores).
+function sizeText(bytes) {
+  return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function downloadLinks(data, base, ext) {
+  for (const u of state.downloadUrls || []) URL.revokeObjectURL(u);
+  state.downloadUrls = [];
+  const link = (blob, name, label, cls) => {
+    const url = URL.createObjectURL(blob);
+    state.downloadUrls.push(url);
+    return h('a', { class: 'btn ' + cls, href: url, download: name }, label);
+  };
+  const out = [];
+  if (data.mcworld) {
+    out.push(link(data.mcworld, base + '.mcworld', `Descargar .mcworld (${sizeText(data.mcworld.size)}) · para abrir con Minecraft`, 'primary'));
+  }
+  if (!data.mcworld || data.nested || ext !== '.mcworld') {
+    out.push(link(data.blob, base + (ext === '.mcworld' && !data.nested ? '.mcworld' : '.zip'),
+      `Descargar .zip · misma estructura que el original (servidores)`, data.mcworld ? '' : 'primary'));
+  }
+  const steps = [];
+  if (data.mcworld) {
+    steps.push(h('p', { class: 'steps-title' }, 'En el móvil (también PC y consola):'),
+      h('ol', { class: 'result-steps' },
+        h('li', {}, 'Descarga el .mcworld y ábrelo con Minecraft. En Android, toca la descarga y elige Minecraft; en iPhone, en la app Archivos: Compartir → Minecraft.'),
+        h('li', {}, 'Se importa como un mundo nuevo en tu lista; el mundo original no se toca.'),
+        h('li', {}, 'Para un Realm: en los ajustes del Realm, «Reemplazar mundo» y elige el mundo importado.')));
+  }
+  steps.push(h('p', { class: 'steps-title' }, 'En un servidor:'),
+    h('ol', { class: 'result-steps' },
+      h('li', {}, 'Con el servidor apagado, sube el .zip como copia de seguridad a restaurar (o reemplaza la carpeta del mundo con su contenido).'),
+      h('li', {}, 'Enciende el servidor. Si algo no va bien, restaura tu copia original.')));
+  return [...out, ...steps];
 }
 
 // ---------------------------------------------------------------- árbol de archivos

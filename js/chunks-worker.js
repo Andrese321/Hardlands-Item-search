@@ -108,7 +108,7 @@ self.onmessage = async ({ data }) => {
       status('Creando el mundo modificado…');
       const chunks = selectChunks(analysis, data.selection);
       const out = await buildEditedWorld(source, prefix, analysis, chunks, { onProgress: progress });
-      postMessage({ type: 'built', blob: out.blob, chunks: chunks.length, keys: out.keys, actors: out.actors });
+      postMessage({ type: 'built', blob: out.blob, mcworld: out.mcworld, nested: prefix !== '', chunks: chunks.length, keys: out.keys, actors: out.actors });
     }
   } catch (e) {
     postMessage({ type: 'error', message: e?.message || String(e) });

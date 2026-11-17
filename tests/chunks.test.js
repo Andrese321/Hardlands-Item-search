@@ -97,3 +97,41 @@ test('chunks pintados: se suman a las zonas y respetan el modo', async () => {
   const nether = selectChunks(a, { dim: 1, painted: ['-7,12'], mode: 'inside' });
   assert.deepEqual(nether.map((c) => [c.dim, c.x, c.z]), [[1, -7, 12]]);
 });
+
+test('.mcworld para el móvil: mundo dentro de una carpeta queda en la raíz', async () => {
+  const { buildZip, storedEntry } = await import('../js/zip.js');
+  const { findWorlds } = await import('../js/world.js');
+  // Un .zip como el de un móvil o un servidor: el mundo dentro de una carpeta y otro fichero fuera.
+  const inner = await openZip(original);
+  const entries = [];
+  for (const e of inner.entries) entries.push({ ...e, name: 'ybHBK9W9eIM=/' + e.name, data: await inner.raw(e) });
+  entries.push(storedEntry('server.properties', new TextEncoder().encode('level-name=Hardlands')));
+  const nested = new Blob([await buildZip(entries).arrayBuffer()]);
+
+  const { zip, files } = await filesOf(nested);
+  const [prefix] = findWorlds(files.map((f) => f.path));
+  assert.equal(prefix, 'ybHBK9W9eIM=/');
+  const db = files.filter((f) => f.path.startsWith(prefix + 'db/')).map((f) => ({ name: f.path.slice(prefix.length + 3), size: f.size, read: f.read }));
+  const a = await analyzeChunks(db);
+  const chosen = selectChunks(a, { dim: 0, zones: [[0, -1, 0, -1]], mode: 'inside' });
+  const out = await buildEditedWorld({ kind: 'zip', zip }, prefix, a, chosen);
+
+  // .zip: misma estructura que el original
+  const z = await openZip(new Blob([await out.blob.arrayBuffer()]));
+  assert.ok(z.entries.some((e) => e.name === 'server.properties'));
+  assert.ok(z.entries.some((e) => e.name === 'ybHBK9W9eIM=/level.dat'));
+
+  // .mcworld: level.dat en la raíz, solo los ficheros del mundo y el registro de borrado
+  const mcBytes = Buffer.from(await out.mcworld.arrayBuffer());
+  writeFileSync(new URL('../.test-output/nested.mcworld', import.meta.url), mcBytes);
+  const mc = await openZip(new Blob([mcBytes]));
+  const names = mc.entries.map((e) => e.name);
+  assert.ok(names.includes('level.dat') && names.includes('levelname.txt'));
+  assert.ok(names.every((n) => !n.startsWith('ybHBK9W9eIM=') && n !== 'server.properties'));
+  assert.ok(names.includes(out.logPath.slice(prefix.length)));
+  assert.equal(names.length, inner.entries.length + 1);
+  // y se lee como un mundo normal, ya sin el chunk borrado
+  const world = await scanWorld((await filesOf(new Blob([mcBytes]))).files);
+  assert.ok(!world.items.some((i) => i.id === 'minecraft:netherite_ingot'));
+  assert.equal(world.worldName, 'Mundo de prueba');
+});

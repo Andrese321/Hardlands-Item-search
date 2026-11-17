@@ -60,5 +60,22 @@ export async function buildWorldWithDeletions(source, prefix, scan, keys, { skip
       originals.push(e);
     }
   }
-  return { blob: buildZip([...originals, ...entries]), keys: keys.length, logPath };
+  const all = [...originals, ...entries];
+  return { blob: buildZip(all), mcworld: mcworldOf(all, prefix), keys: keys.length, logPath };
+}
+
+/**
+ * .mcworld para abrir con Minecraft (móvil, consola, PC): solo los ficheros del
+ * mundo y con level.dat en la raíz, aunque en el original estuvieran dentro de
+ * una carpeta (p. ej. «ybHBK9W9eIM=/» o «worlds/MiMundo/» de un servidor).
+ * Devuelve null si no hay mundo (prefix null) o no hay level.dat.
+ */
+export function mcworldOf(entries, prefix) {
+  if (prefix === null || prefix === undefined) return null;
+  const inside = entries
+    .filter((e) => e.name.startsWith(prefix) && e.name.length > prefix.length)
+    .map((e) => ({ ...e, name: e.name.slice(prefix.length) }));
+  if (!inside.some((e) => e.name === 'level.dat')) return null;
+  // application/octet-stream: así el móvil no le cambia la extensión .mcworld por .zip
+  return buildZip(inside, 'application/octet-stream');
 }

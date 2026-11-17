@@ -29,6 +29,10 @@ Minecraft las **vuelva a generar** desde la semilla (terreno, estructuras y mine
 - Hay dos modos: **borrar lo marcado**, o **borrar todo lo demás** (para reiniciar el mapa conservando las bases).
 - Antes de crear el archivo avisa de cuántos chunks, contenedores y objetos se perderán.
 - Borra todo lo del chunk: terreno, cofres, entidades (animales, objetos tirados…) y datos auxiliares.
+- Se descarga como **.mcworld** (con `level.dat` en la raíz, para abrirlo con Minecraft en el móvil,
+  PC o consola: se importa como un mundo nuevo) o como **.zip** con la misma estructura que el
+  archivo original (para subirlo a un servidor). Si el mundo venía dentro de una carpeta (por
+  ejemplo `ybHBK9W9eIM=/` de un móvil o `worlds/MiMundo/` de un servidor), el .mcworld la quita.
 - **Nunca modifica el archivo original.** Crea uno nuevo (`<nombre>-chunks-borrados.mcworld/.zip`) con los mismos ficheros más un registro de borrado de LevelDB (`db/NNNNNN.log`). Al abrir el mundo, Minecraft aplica los borrados.
 
 Uso con un servidor: **apágalo** (los chunks cargados en un servidor encendido se volverían

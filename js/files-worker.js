@@ -139,7 +139,7 @@ self.onmessage = async ({ data }) => {
         skipPaths,
         onProgress: (value) => postMessage({ type: 'progress', value }),
       });
-      postMessage({ type: 'deleted', blob: out.blob, world: keys.length, packs: skipPaths.size, names: chosen.map((s) => s.id) });
+      postMessage({ type: 'deleted', blob: out.blob, mcworld: out.mcworld, nested: !!prefix, world: keys.length, packs: skipPaths.size, names: chosen.map((s) => s.id) });
     }
   } catch (e) {
     postMessage({ type: 'error', message: e?.message || String(e) });
