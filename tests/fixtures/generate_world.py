@@ -219,7 +219,9 @@ def main():
     with open(os.path.join(world, "behavior_packs", "Pack Hardlands", "manifest.json"), "w") as f:
         f.write('{"format_version": 2}')
     with open(os.path.join(world, "level.dat"), "wb") as f:
-        f.write(b"\x0a\x00\x00\x00\x00\x00\x00\x00")
+        body = nbt({"LevelName": "Mundo de prueba", "RandomSeed": Long(1722026622528246853),
+                    "SpawnX": Int(-120), "SpawnY": Int(70), "SpawnZ": Int(48), "StorageVersion": Int(10)})
+        f.write(struct.pack("<ii", 10, len(body)) + body)
 
     files = sorted(os.listdir(os.path.join(world, "db")))
     print("ficheros db:", files, file=sys.stderr)

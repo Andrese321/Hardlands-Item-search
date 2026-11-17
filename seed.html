@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hardlands · Estructuras por semilla</title>
+  <meta name="description" content="Encuentra en una semilla de Minecraft Bedrock estructuras que estén cerca unas de otras: monumentos oceánicos, puestos de saqueadores, aldeas y más.">
+  <meta name="theme-color" content="#1f6f3a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <img src="icons/icon.svg" alt="" width="28" height="28">
+    <div>
+      <h1>Hardlands</h1>
+      <p>Estructuras por semilla · Minecraft Bedrock</p>
+    </div>
+  </header>
+  <nav class="appnav">
+    <a href="./">Objetos</a>
+    <a href="chunks.html">Chunks</a>
+    <a href="files.html">Archivos</a>
+    <a href="seed.html" aria-current="page">Semilla</a>
+  </nav>
+
+  <main>
+    <form id="form" class="card">
+      <h2>Estructuras cercanas</h2>
+      <p class="muted">Busca en una semilla dos estructuras que estén a pocos chunks una de otra. No hace falta el archivo del mundo: se calcula a partir de la semilla.</p>
+
+      <label class="field">Semilla
+        <input id="seed" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Por ejemplo -4504155221468820465" required>
+      </label>
+      <label class="btn small file-btn seed-file">
+        <input id="input-world" type="file" accept=".mcworld,.zip,.dat,application/zip,application/octet-stream">
+        Leer la semilla de un mundo (.mcworld, .zip o level.dat)
+      </label>
+      <p id="seed-info" class="small muted" hidden></p>
+
+      <div class="grid2">
+        <label class="field">Estructura
+          <select id="type-a"></select>
+        </label>
+        <label class="field">Cerca de
+          <select id="type-b"></select>
+        </label>
+      </div>
+
+      <label class="field" id="dist-field">Distancia máxima: <strong id="dist-label"></strong>
+        <input id="dist" type="range" min="1" max="10" step="1" value="10">
+      </label>
+
+      <div class="grid3">
+        <label class="field">Centro X
+          <input id="center-x" type="number" inputmode="numeric" value="0" required>
+        </label>
+        <label class="field">Centro Z
+          <input id="center-z" type="number" inputmode="numeric" value="0" required>
+        </label>
+        <label class="field">Radio (bloques)
+          <select id="radius">
+            <option value="5000">5 000</option>
+            <option value="10000">10 000</option>
+            <option value="25000">25 000</option>
+            <option value="50000">50 000</option>
+            <option value="100000" selected>100 000</option>
+            <option value="250000">250 000</option>
+            <option value="500000">500 000</option>
+            <option value="1000000">1 000 000</option>
+          </select>
+        </label>
+      </div>
+
+      <button id="btn-search" class="btn primary">Buscar</button>
+    </form>
+
+    <div id="progress" class="card" hidden>
+      <p id="progress-status" class="muted">Buscando…</p>
+      <div class="bar"><div id="progress-bar"></div></div>
+      <button id="btn-cancel" class="btn small">Cancelar</button>
+    </div>
+
+    <div id="error" class="card error" hidden>
+      <strong>No se pudo buscar</strong>
+      <p id="error-text"></p>
+    </div>
+
+    <p id="summary" class="muted small"></p>
+    <label id="sort-field" class="field sort-field" hidden>Ordenar por
+      <select id="sort">
+        <option value="pair">Las más juntas primero</option>
+        <option value="center">Las más cercanas al centro primero</option>
+      </select>
+    </label>
+    <div id="results" class="results"></div>
+
+    <details class="card help">
+      <summary>¿Qué tan fiable es?</summary>
+      <ul>
+        <li>Las posiciones se calculan igual que lo hace Bedrock (versión 1.18 o posterior). Están comprobadas con semillas publicadas de monumentos, puestos de saqueadores, aldeas y cabañas de bruja: las coordenadas coinciden.</li>
+        <li>Los templos y los iglús salen en las mismas posiciones que las cabañas de bruja (solo cambia el bioma). Las mansiones usan el mismo método, pero no están comprobadas con semillas reales.</li>
+        <li>Es una predicción: muy de vez en cuando el terreno impide que una estructura aparezca aunque el bioma sea correcto.</li>
+        <li>Solo vale para zonas del mapa generadas en 1.18 o posterior. Lo que se exploró en versiones antiguas puede ser distinto.</li>
+        <li>Las coordenadas son el centro del chunk de la estructura. La estructura está en ese chunk o pegada a él.</li>
+        <li>La semilla tiene que ser el número. Si creaste el mundo escribiendo un texto, usa «Leer la semilla de un mundo» o mírala en los ajustes del mundo.</li>
+      </ul>
+    </details>
+  </main>
+
+  <footer id="app-version" class="version"></footer>
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="js/seed-app.js"></script>
+</body>
+</html>

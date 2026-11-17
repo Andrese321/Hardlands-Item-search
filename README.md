@@ -47,6 +47,34 @@ Tercera herramienta, en la pestaña **Archivos**:
 
 El mundo original nunca se modifica.
 
+## Estructuras por semilla (`seed.html`)
+
+Cuarta herramienta, en la pestaña **Semilla**: dada una semilla, busca **dos estructuras que estén
+a pocos chunks una de otra** (de 1 a 10), por ejemplo un monumento oceánico junto a un puesto de
+saqueadores, o un monumento doble. También puede listar un solo tipo de estructura.
+
+- No necesita el archivo del mundo. La semilla se escribe, o se lee de un mundo (`level.dat`),
+  y el punto de aparición se puede usar como centro de la búsqueda.
+- Estructuras: monumento oceánico, puesto de saqueadores, aldea, mansión, templo del desierto,
+  templo de la jungla, cabaña de bruja e iglú.
+- Radio de búsqueda de 5 000 a 1 000 000 de bloques. Hay combinaciones muy raras: un monumento
+  a menos de 10 chunks de un puesto de saqueadores suele estar a cientos de miles de bloques.
+- Cada resultado da las coordenadas, el bioma y botones para copiar coordenadas o `/tp`.
+
+Cómo se calcula:
+
+- **Posiciones:** con el algoritmo de Bedrock (regiones + Mersenne Twister), en `js/seedfinder.js`.
+  Referencias: [bedrockified](https://github.com/Earthcomputer/bedrockified) y
+  [MCBEStructureFinder](https://github.com/hhhxiao/MCBEStructureFinder).
+- **Biomas:** con [cubiomes](https://github.com/Cubitect/cubiomes) (MIT) compilado a WebAssembly
+  (`vendor/cubiomes.wasm`; se regenera con `tools/build-cubiomes.sh`). Desde 1.18 los biomas
+  son iguales en Bedrock y Java.
+- **Comprobado** con posiciones publicadas de semillas de Bedrock 1.21 (monumentos, puestos de
+  saqueadores, una aldea y una cabaña de bruja): están en `tests/seedfinder.test.js`. Las mansiones
+  no están comprobadas con datos reales.
+- Vale para terreno generado en 1.18 o posterior, y es una predicción: el juego puede no generar
+  alguna estructura por el terreno.
+
 ## Privacidad y seguridad
 
 El mundo se lee **solo en tu dispositivo** (en el navegador). No se sube a ningún servidor
@@ -109,6 +137,12 @@ js/files.js             extracción de estructuras (.mcstructure) y árbol de ar
 js/files-app.js         interfaz del explorador
 js/files-worker.js      trabajo pesado del explorador
 js/edit.js              copia del mundo con borrados (lo usan chunks y estructuras)
+seed.html               buscador de estructuras por semilla
+js/seedfinder.js        posiciones de estructuras de Bedrock y búsqueda de parejas
+js/seed-app.js          interfaz del buscador por semilla
+js/seed-worker.js       trabajo pesado del buscador por semilla y lectura de level.dat
+vendor/cubiomes.wasm    generador de biomas (cubiomes, MIT)
+tools/                  envoltorio en C y script para recompilar cubiomes.wasm
 data/names_es.json      nombres en español (sacados de los textos oficiales de Bedrock)
 vendor/fflate.js        descompresión (fflate 0.8.3, MIT)
 ```

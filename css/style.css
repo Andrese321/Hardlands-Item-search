@@ -361,3 +361,28 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .structure.picked { border-color: var(--map-del); box-shadow: inset 3px 0 0 var(--map-del); }
 .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 .version { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); }
+
+/* ---------- estructuras por semilla ---------- */
+.field { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); margin-top: 12px; min-width: 0; }
+.field input[type="text"], .field input[type="number"], .field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.field input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px; }
+.field strong { color: var(--text); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.seed-file { margin-top: 8px; width: 100%; }
+.linklike { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.seed-result { display: grid; gap: 10px; margin-bottom: 0; }
+.seed-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.seed-dist { font-weight: 800; font-size: 1.1rem; }
+.seed-place { display: grid; gap: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.results > .more { margin: 0; width: 100%; }
+.sort-field { margin: 0 0 10px; max-width: 320px; }
