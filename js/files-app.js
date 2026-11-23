@@ -3,7 +3,7 @@ import { buildTree } from './files.js';
 import { splitArchiveName } from './archive.js';
 import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError } from './sizewarn.js';
 import { itemLabel } from './search.js';
-import { checkStructureFile, structureName, uniqueNames, structureId, buildMcpack, loadCommand, LOADER_EVENT } from './inject.js';
+import { checkStructureFile, structureName, uniqueNames, structureId, buildMcpack, loadCommand, LOADER_EVENT, shortName } from './inject.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = new Intl.NumberFormat('es-ES');
@@ -432,7 +432,18 @@ function renderInject() {
                 renderInject();
               },
             })),
-          h('span', { class: 'file' }, s.file)),
+          h('span', { class: 'file' }, s.file),
+          h('span', { class: 'name-hint' }, `En el juego se llamará «${s.name}».`,
+            shortName(s.name) ? ' ' : null,
+            shortName(s.name) ? h('button', {
+              type: 'button',
+              class: 'linklike',
+              onclick: () => {
+                s.name = shortName(s.name);
+                fixNames();
+                renderInject();
+              },
+            }, `Acortar a «${shortName(s.name)}»`) : null)),
       h('button', {
         type: 'button',
         class: 'btn small',

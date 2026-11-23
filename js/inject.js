@@ -26,6 +26,24 @@ export function structureName(fileName) {
   return base || 'estructura';
 }
 
+/**
+ * Nombre corto sugerido para nombres largos de descargas
+ * («eva-01-evangeli-u5wh26fb» → «eva-01»). Devuelve null si ya es corto.
+ */
+export function shortName(name) {
+  if (name.length <= 16) return null;
+  const parts = name.split(/[-_]+/).filter(Boolean);
+  // fuera trozos con pinta de código aleatorio (letras y números mezclados, 6+ caracteres)
+  const clean = parts.filter((p) => !(p.length >= 6 && /[a-z]/.test(p) && /[0-9]/.test(p)));
+  const filler = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'of', 'the', 'and', 'a']);
+  let out = '';
+  for (const p of clean.length ? clean : parts) {
+    out = out ? `${out}-${p}` : p;
+    if (out.length >= 6 && !filler.has(p)) break; // no terminar en «del», «de»...
+  }
+  return out && out !== name ? out.slice(0, 16) : null;
+}
+
 /** Hace únicos los nombres añadiendo _2, _3... */
 export function uniqueNames(names) {
   const used = new Set();
@@ -214,26 +232,79 @@ function unlock() {
   }
 }
 
-/** @param {string} name @returns {number[] | undefined} */
-function sizeOf(name) {
-  if (STRUCTURES[name]) return STRUCTURES[name];
-  const id = name.includes(':') ? name : 'mystructure:' + name;
+/** Para comparar nombres sin fijarse en mayúsculas, guiones ni «mystructure:». @param {string} s */
+function norm(s) {
+  return s.toLowerCase().replace(/^mystructure:/, '').replace(/[^a-z0-9]/g, '');
+}
+
+/** Estructuras conocidas: las de este paquete y las guardadas en el mundo. @returns {Map<string, string>} nombre → id */
+function knownStructures() {
+  const known = new Map();
+  for (const n of Object.keys(STRUCTURES)) known.set(n, 'mystructure:' + n);
+  try {
+    for (const id of world.structureManager.getWorldStructureIds()) {
+      known.set(id.startsWith('mystructure:') ? id.slice(12) : id, id);
+    }
+  } catch (e) {
+    // no se pudieron listar las del mundo
+  }
+  return known;
+}
+
+/**
+ * Busca la estructura por nombre exacto o aproximado («eva01» encuentra
+ * «eva-01-evangeli-u5wh26fb»). @param {string} input
+ * @returns {{ id: string, name: string, many: string[] | null } | undefined}
+ */
+function resolve(input) {
+  const known = knownStructures();
+  const want = norm(input);
+  const entries = [...known.entries()];
+  for (const test of [(/** @type {string} */ n) => n === want, (/** @type {string} */ n) => n.startsWith(want), (/** @type {string} */ n) => n.includes(want)]) {
+    const found = want ? entries.filter(([name]) => test(norm(name))) : [];
+    if (found.length === 1) return { name: found[0][0], id: found[0][1], many: null };
+    if (found.length > 1) return { name: '', id: '', many: found.map(([name]) => name) };
+  }
+  // estructuras de otros paquetes: solo con el nombre exacto
+  const id = input.includes(':') ? input : 'mystructure:' + input;
+  if (world.structureManager.get(id)) return { id, name: input, many: null };
+  return undefined;
+}
+
+/** @param {string} id @returns {number[] | undefined} */
+function sizeOf(id) {
+  const short = id.startsWith('mystructure:') ? id.slice(12) : id;
+  if (STRUCTURES[short]) return STRUCTURES[short];
   const s = world.structureManager.get(id);
   return s ? [s.size.x, s.size.y, s.size.z] : undefined;
 }
 
 /** @param {import('@minecraft/server').Player | undefined} player */
 function listStructures(player) {
-  const names = Object.keys(STRUCTURES);
-  tell(player, '§eEstructuras de este paquete: §f' + (names.length ? names.map((n) => n + ' (' + STRUCTURES[n].join('×') + ')').join(', ') : 'ninguna'));
-  tell(player, '§7También sirven las guardadas en el mundo. Uso: /scriptevent ${LOADER_EVENT} <nombre> [90|180|270]');
+  const names = [...knownStructures().keys()];
+  tell(player, '§eEstructuras disponibles: §f' + (names.length
+    ? names.map((n) => n + (STRUCTURES[n] ? ' (' + STRUCTURES[n].join('×') + ')' : '')).join(', ')
+    : 'ninguna'));
+  tell(player, '§7Uso: /scriptevent ${LOADER_EVENT} <nombre> [90|180|270] · vale escribir solo el principio del nombre.');
 }
 
 /** @param {import('@minecraft/server').Player} player @param {string} name @param {number} angle */
 function load(player, name, angle) {
-  const size = sizeOf(name);
+  const found = resolve(name);
+  if (!found) {
+    tell(player, '§cNo encuentro la estructura «' + name + '».');
+    listStructures(player);
+    return;
+  }
+  if (found.many) {
+    tell(player, '§eHay varias estructuras que coinciden: §f' + found.many.join(', ') + '§e. Escribe un nombre más completo.');
+    return;
+  }
+  const id = found.id;
+  if (norm(found.name) !== norm(name)) tell(player, '§7Usando «' + found.name + '».');
+  const size = sizeOf(id);
   if (!size) {
-    tell(player, '§cNo encuentro la estructura «' + name + '». Escribe /scriptevent ${LOADER_LIST_EVENT}');
+    tell(player, '§cNo se pudo leer el tamaño de «' + id + '».');
     return;
   }
   const rotation = ROTATIONS[angle] || 'None';
@@ -260,7 +331,6 @@ function load(player, name, angle) {
   let y = Math.floor(p.y);
   if (y + sy > range.max) y = range.max - sy;
   if (y < range.min) y = range.min;
-  const id = name.includes(':') ? name : 'mystructure:' + name;
 
   // Chunks que ocupa
   const cx0 = Math.floor(x / 16);

@@ -30,7 +30,10 @@ export const system = {
 let n = 0;
 
 /** Mundo simulado. `loadDelay`: ticks que tardan los chunks en cargar tras crear el área. */
-function harness({ loadDelay = 30, structures = {}, dim = { min: -64, max: 320 } } = {}) {
+const toVec = (s) => ({ x: s[0], y: s[1], z: s[2] });
+
+// structures: guardadas en el mundo; packStructures: en paquetes (get las encuentra, pero no salen en la lista del mundo)
+function harness({ loadDelay = 30, structures = {}, packStructures = {}, dim = { min: -64, max: 320 } } = {}) {
   const mc = {
     tick: 0, tasks: [], nextId: 1, listeners: [], messages: [], bars: [], commands: [], placed: [],
     areas: new Map(), // nombre -> { x0, z0, x1, z1, readyAt }
@@ -65,7 +68,8 @@ function harness({ loadDelay = 30, structures = {}, dim = { min: -64, max: 320 }
       removeObjective: (id) => mc.objectives.delete(id),
     },
     structureManager: {
-      get: (id) => (structures[id] ? { size: { x: structures[id][0], y: structures[id][1], z: structures[id][2] } } : undefined),
+      get: (id) => (structures[id] || packStructures[id] ? { size: toVec(structures[id] || packStructures[id]) } : undefined),
+      getWorldStructureIds: () => Object.keys(structures),
       place: (id, dimension, location, options) => {
         if (location.y < dim.min) throw new Error('fuera del mundo');
         mc.placed.push({ id, location, options, tick: mc.tick });
@@ -178,7 +182,7 @@ test('estructuras guardadas en el mundo (no incluidas en el paquete) y errores',
   assert.equal(mc.placed[0].id, 'mystructure:torre');
   mc.advance(120);
   mc.send('hardlands:cargar', 'no_existe');
-  assert.match(mc.messages.at(-1)[1], /No encuentro/);
+  assert.ok(mc.messages.some(([, t]) => /No encuentro/.test(t)));
   mc.send('hardlands:cargar', 'torre 45');
   assert.match(mc.messages.at(-1)[1], /90, 180 o 270/);
   mc.send('hardlands:lista', '');
@@ -198,6 +202,44 @@ test('no cabe en el Nether (128 de alto) y aviso si la zona no termina de cargar
   slow.advance(5 * 241);
   assert.equal(slow.placed.length, 1, 'tras ~1 minuto se coloca igualmente (el juego la termina al acercarse)');
   assert.match(slow.messages.at(-1)[1], /no se cargaron a tiempo/);
+});
+
+test('nombres aproximados: «eva01» encuentra «eva-01-evangeli-u5wh26fb»', async () => {
+  const mc = harness({ loadDelay: 1, structures: { 'mystructure:castillo_rojo': [10, 10, 10], 'mystructure:castillo_azul': [10, 10, 10] } });
+  await loadScript([{ name: 'eva-01-evangeli-u5wh26fb', size: [80, 256, 87] }]);
+  for (const typed of ['eva01', 'EVA-01', 'eva', 'mystructure:eva-01-evangeli-u5wh26fb', 'evangeli']) {
+    mc.send('hardlands:cargar', typed);
+    mc.advance(10);
+    assert.equal(mc.placed.at(-1)?.id, 'mystructure:eva-01-evangeli-u5wh26fb', typed);
+    mc.advance(120); // termina y se libera
+  }
+  assert.ok(mc.messages.some(([, t]) => /Usando «eva-01-evangeli-u5wh26fb»/.test(t)));
+  // varias coinciden: las lista y no coloca nada
+  const before = mc.placed.length;
+  mc.send('hardlands:cargar', 'castillo');
+  assert.match(mc.messages.at(-1)[1], /castillo_rojo, castillo_azul|castillo_azul, castillo_rojo/);
+  assert.equal(mc.placed.length, before);
+  // la lista incluye las del paquete y las guardadas en el mundo
+  mc.send('hardlands:lista', '');
+  assert.ok(mc.messages.some(([, t]) => /eva-01-evangeli-u5wh26fb \(80×256×87\)/.test(t) && /castillo_rojo/.test(t)));
+});
+
+test('varias estructuras en el mismo paquete: se cargan una a una', async () => {
+  const mc = harness({ loadDelay: 1 });
+  await loadScript([{ name: 'eva01', size: [80, 256, 87] }, { name: 'casa', size: [3, 2, 3] }, { name: 'torre', size: [5, 40, 5] }]);
+  for (const n of ['casa', 'torre', 'eva01']) {
+    mc.send('hardlands:cargar', n);
+    mc.advance(130);
+  }
+  assert.deepEqual(mc.placed.map((p) => p.id), ['mystructure:casa', 'mystructure:torre', 'mystructure:eva01']);
+});
+
+test('estructuras de otros paquetes: con el nombre exacto', async () => {
+  const mc = harness({ loadDelay: 1, packStructures: { 'mystructure:puente': [4, 4, 4] } });
+  await loadScript([]);
+  mc.send('hardlands:cargar', 'puente');
+  mc.advance(10);
+  assert.equal(mc.placed.at(-1).id, 'mystructure:puente');
 });
 
 test.after(() => rmSync(dir, { recursive: true, force: true }));

@@ -23,6 +23,11 @@ test('nombres válidos para el juego', () => {
   assert.equal(structureName('???.mcstructure'), 'estructura');
   assert.deepEqual(uniqueNames(['a', 'a', 'b', 'a']), ['a', 'a_2', 'b', 'a_3']);
   assert.equal(structureId('casa'), 'mystructure:casa');
+  return import('../js/inject.js').then(({ shortName }) => {
+    assert.equal(shortName('eva-01-evangeli-u5wh26fb'), 'eva-01');
+    assert.equal(shortName('x7k2m9q4p1z8_torre_del_rey'), 'torre-del-rey');
+    assert.equal(shortName('casa'), null);
+  });
 });
 
 test('comprueba que el archivo sea un .mcstructure de Bedrock', () => {
