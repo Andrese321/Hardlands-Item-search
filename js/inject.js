@@ -102,3 +102,33 @@ export function buildMcpack(structures, { packName = 'Estructuras', icon = null 
   // application/octet-stream: así el móvil no cambia la extensión .mcpack por .zip
   return { blob: buildZip(files, 'application/octet-stream'), manifest };
 }
+
+/**
+ * Comando para pegar la estructura, ajustado a su tamaño:
+ * - si es grande (más de 32 bloques de ancho), centrada donde está el jugador;
+ * - si es muy alta, empezando a una altura con la que no se salga del mundo (Y máx. 319).
+ * @param size [x, y, z] de la estructura
+ * @returns { cmd, notes: [] }
+ */
+export function loadCommand(name, size = [1, 1, 1]) {
+  const [sx, sy, sz] = size;
+  const notes = [];
+  const center = sx > 32 || sz > 32;
+  const x = center ? `~-${Math.floor(sx / 2)}` : '~';
+  const z = center ? `~-${Math.floor(sz / 2)}` : '~';
+  const maxY = 320 - sy; // el bloque más alto queda en Y + alto - 1 ≤ 319
+  let y = '~';
+  if (sy > 160) {
+    y = String(Math.min(64, maxY));
+    notes.push(`Mide ${sy} bloques de alto: tiene que empezar en Y ${maxY} o más abajo para no salirse del mundo, por eso el comando usa Y ${y}.`);
+  } else if (sy > 64) {
+    notes.push(`Mide ${sy} bloques de alto: ponte por debajo de Y ${maxY} antes de usarlo, o no cabrá.`);
+  }
+  if (center) {
+    notes.push(`Mide ${sx} × ${sz} bloques: el comando la centra donde estás (más ancha de 64, el bloque de estructuras no puede cargarla; usa el comando).`);
+  } else {
+    notes.push('Aparece con una esquina en tus pies y se extiende hacia +X y +Z.');
+  }
+  notes.push('Todo lo que haya en ese espacio se reemplaza (también por aire): ponla en una zona despejada.');
+  return { cmd: `/structure load ${structureId(name)} ${x} ${y} ${z}`, notes };
+}

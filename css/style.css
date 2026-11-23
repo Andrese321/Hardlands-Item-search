@@ -522,3 +522,7 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .cmd { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 8px; padding: 6px 8px; margin: 6px 0; }
 .cmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; background: none; padding: 0; font-size: 0.85rem; }
 .cmd .btn { width: auto; margin: 0; }
+.cmd-preview { margin: 10px 0; }
+.cmd-preview .steps-title { margin-top: 0; }
+.cmd-notes { margin: 0 0 8px; padding-left: 18px; }
+.cmd-notes li { margin: 2px 0; }

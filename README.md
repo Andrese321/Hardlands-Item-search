@@ -60,7 +60,10 @@ Tercera herramienta, en la pestaña **Archivos**:
      `structuretemplate_mystructure:<nombre>`, igual que el bloque de estructuras al «Guardar»,
      mediante un registro de LevelDB (como el borrado de chunks). No hace falta activar paquetes.
      Si ya había una con el mismo nombre, se reemplaza. Se descarga como .mcworld o .zip.
-  En los dos casos se pegan con `/structure load mystructure:<nombre> ~ ~ ~`. Los nombres se
+  En los dos casos se pegan con `/structure load mystructure:<nombre> ~ ~ ~`. La página muestra
+  el comando de cada estructura desde el principio (con el nombre del paquete en las instrucciones)
+  y lo ajusta a su tamaño: centrada en el jugador si es grande y con una altura que quepa en el
+  mundo si es muy alta (p. ej. `~-40 64 ~-43` para una de 80 × 256 × 87). Los nombres se
   adaptan a lo que acepta el juego (minúsculas, sin espacios ni tildes) y se pueden cambiar. Las
   estructuras de Java (.nbt) se rechazan porque Bedrock no puede cargarlas.
 - **Todos los archivos:** explorador de carpetas del mundo (o de cualquier .zip/.mcpack/.mcaddon)

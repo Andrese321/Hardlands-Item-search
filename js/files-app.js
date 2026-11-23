@@ -3,7 +3,7 @@ import { buildTree } from './files.js';
 import { splitArchiveName } from './archive.js';
 import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError } from './sizewarn.js';
 import { itemLabel } from './search.js';
-import { checkStructureFile, structureName, uniqueNames, structureId, buildMcpack } from './inject.js';
+import { checkStructureFile, structureName, uniqueNames, structureId, buildMcpack, loadCommand } from './inject.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = new Intl.NumberFormat('es-ES');
@@ -461,6 +461,7 @@ function renderInject() {
     btn.textContent = 'Elegir el mundo y meterlas';
   }
   btn.disabled = !(n && $('inject-confirm').checked);
+  renderCommandPreviews();
 }
 
 $('input-structs').addEventListener('change', async (e) => {
@@ -470,17 +471,35 @@ $('input-structs').addEventListener('change', async (e) => {
 });
 $('inject-confirm').addEventListener('change', renderInject);
 
-function commandsBlock(ids) {
-  return [
-    h('p', { class: 'steps-title' }, 'Para pegarlas en el juego (con los trucos activados), colócate donde quieras y escribe:'),
-    ...ids.map((id) => {
-      const cmd = `/structure load ${id} ~ ~ ~`;
-      return h('div', { class: 'cmd' }, h('code', {}, cmd),
-        h('button', { type: 'button', class: 'btn small', onclick: () => copyText(cmd) }, 'Copiar'));
-    }),
-    h('p', { class: 'small muted' }, 'También puedes usar un bloque de estructuras en modo «Cargar» con ese nombre (se consigue con /give @s structure_block).'),
-  ];
+// Comandos para pegar las estructuras, con botón de copiar y notas según su tamaño.
+// items: Array<{ name, info }>
+function commandsBlock(items, intro) {
+  const out = [h('p', { class: 'steps-title' }, intro)];
+  for (const s of items) {
+    const { cmd, notes } = loadCommand(s.name, s.info?.size);
+    out.push(
+      h('div', { class: 'cmd' }, h('code', {}, cmd),
+        h('button', { type: 'button', class: 'btn small', onclick: () => copyText(cmd) }, 'Copiar')),
+      h('ul', { class: 'cmd-notes small muted' }, notes.map((n) => h('li', {}, n))),
+    );
+  }
+  out.push(h('p', { class: 'small muted' }, 'Hacen falta los trucos activados (Editar mundo → Trucos). ' +
+    'Si quieres girarla, añade al final 90_degrees, 180_degrees o 270_degrees.'));
+  return out;
 }
+
+function packName() {
+  return $('pack-name').value.trim() || 'Estructuras';
+}
+
+function renderCommandPreviews() {
+  const list = validStructures();
+  $('pack-cmds').replaceChildren(...(list.length ? commandsBlock(list,
+    `Después de abrir el .mcpack con Minecraft y activar el paquete «${packName()}» en tu mundo (Editar → Paquetes de comportamiento), entra y escribe:`) : []));
+  $('inject-cmds').replaceChildren(...(list.length ? commandsBlock(list,
+    'Después de importar el mundo modificado, entra y escribe (no hace falta activar ningún paquete):') : []));
+}
+$('pack-name').addEventListener('input', renderCommandPreviews);
 
 async function copyText(text) {
   try {
@@ -517,7 +536,7 @@ $('btn-mcpack').addEventListener('click', async () => {
       h('li', {}, 'Ábrelo con Minecraft (Android: toca la descarga y elige Minecraft; iPhone: Archivos → Compartir → Minecraft). Se importa solo.'),
       h('li', {}, `En tu mundo: Editar → Paquetes de comportamiento → Activar «${packName}». Activarlo desactiva los logros en ese mundo.`),
       h('li', {}, 'En un servidor: descomprime el .mcpack dentro de «behavior_packs/» y actívalo en world_behavior_packs.json. En un Realm: actívalo en el mundo antes de subirlo.')),
-    ...commandsBlock(list.map((s) => structureId(s.name))),
+    ...commandsBlock(list, `Cuando el paquete «${packName}» esté activado en tu mundo, entra y escribe:`),
   );
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
@@ -563,7 +582,7 @@ function onInjected(data) {
       ? [h('p', { class: 'danger small' }, `⚠ Ya había ${data.replaced.length === 1 ? 'una estructura' : 'estructuras'} con ese nombre en el mundo (${data.replaced.join(', ')}): se ${data.replaced.length === 1 ? 'reemplaza' : 'reemplazan'} por la nueva.`)]
       : []),
     ...downloadLinks(data, `${state.archiveName}-con-estructuras`, state.ext),
-    ...commandsBlock(data.ids),
+    ...commandsBlock(validStructures(), 'Al entrar en el mundo, escribe:'),
   );
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
   toast('Mundo con las estructuras listo para descargar');

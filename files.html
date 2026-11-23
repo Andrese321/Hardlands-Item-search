@@ -135,6 +135,7 @@
           <label class="field">Nombre del paquete
             <input id="pack-name" type="text" maxlength="60" value="Estructuras Hardlands">
           </label>
+          <div id="pack-cmds" class="cmd-preview"></div>
           <button id="btn-mcpack" type="button" class="btn primary">Crear .mcpack</button>
         </div>
 
@@ -142,6 +143,7 @@
           <h3>Opción 2 · Meter dentro de un mundo</h3>
           <p class="small muted">Las estructuras se guardan dentro del mundo, como si las hubieras guardado con el bloque de estructuras. No hace falta activar ningún paquete. Se crea una copia del mundo: el original no se toca.</p>
           <p id="inject-target" class="small"></p>
+          <div id="inject-cmds" class="cmd-preview"></div>
           <label class="radio"><input id="inject-confirm" type="checkbox"><span>Tengo guardada una copia del mundo original</span></label>
           <button id="btn-inject" type="button" class="btn" disabled>Elegir el mundo y meterlas</button>
           <input id="input-inject-world" type="file" hidden accept=".mcworld,.zip,.tar,.gz,.tgz,application/gzip,application/x-gzip,application/x-tar,application/x-compressed-tar,application/zip,application/octet-stream">

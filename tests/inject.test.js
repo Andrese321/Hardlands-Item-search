@@ -83,3 +83,20 @@ test('estructuras grandes: el registro se reparte en varios bloques', async () =
   assert.equal(g.bytes.length, big.length);
   assert.deepEqual(Buffer.from(g.bytes.subarray(0, puente.length)), Buffer.from(puente));
 });
+
+test('comando ajustado al tamaño de la estructura', async () => {
+  const { loadCommand } = await import('../js/inject.js');
+  // pequeña: esquina en los pies
+  assert.equal(loadCommand('casa', [3, 2, 3]).cmd, '/structure load mystructure:casa ~ ~ ~');
+  // grande y muy alta (como un Eva-01 de 80 × 256 × 87): centrada y empezando en Y 64
+  const eva = loadCommand('eva01', [80, 256, 87]);
+  assert.equal(eva.cmd, '/structure load mystructure:eva01 ~-40 64 ~-43');
+  assert.ok(eva.notes.some((n) => /Y 64/.test(n)));
+  assert.ok(eva.notes.some((n) => /80 × 87/.test(n)));
+  // alta pero no tanto: sin altura fija, con aviso
+  const tall = loadCommand('torre', [10, 100, 10]);
+  assert.equal(tall.cmd, '/structure load mystructure:torre ~ ~ ~');
+  assert.ok(tall.notes.some((n) => /Y 220/.test(n)));
+  // 320 bloques de alto: solo cabe desde Y 0
+  assert.equal(loadCommand('alta', [5, 320, 5]).cmd, '/structure load mystructure:alta ~ 0 ~');
+});
