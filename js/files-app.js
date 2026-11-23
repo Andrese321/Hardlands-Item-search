@@ -3,6 +3,7 @@ import { buildTree } from './files.js';
 import { splitArchiveName } from './archive.js';
 import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError } from './sizewarn.js';
 import { itemLabel } from './search.js';
+import { checkStructureFile, structureName, uniqueNames, structureId, buildMcpack } from './inject.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = new Intl.NumberFormat('es-ES');
@@ -25,6 +26,7 @@ function h(tag, props = {}, ...children) {
 const state = {
   worker: null, files: [], structures: [], names: { items: {} }, archiveName: 'mundo', ext: '.zip', worldName: '',
   selected: new Set(), canEdit: false, editBlocked: '', deleting: false, downloadUrl: null,
+  hasWorld: false, injectList: [], injecting: false,
 };
 
 function size(bytes) {
@@ -35,6 +37,7 @@ function size(bytes) {
 
 function show(screen) {
   for (const id of ['screen-load', 'screen-progress', 'screen-choose', 'screen-files']) $(id).hidden = id !== screen;
+  $('inject').hidden = screen === 'screen-progress' || screen === 'screen-choose';
   $('error').hidden = true;
 }
 
@@ -79,8 +82,10 @@ function startWorker() {
     else if (data.type === 'scanned') onScanned(data);
     else if (data.type === 'download') saveBlob(data.blob, data.name);
     else if (data.type === 'deleted') onDeleted(data);
+    else if (data.type === 'injected') onInjected(data);
     else if (data.type === 'error') {
       if (state.deleting) deleteFailed(data.message);
+      else if (state.injecting) injectFailed(data.message);
       else showError(data.message);
     }
   };
@@ -134,6 +139,7 @@ function chooseWorld(worlds) {
 
 function onScanned(data) {
   markDone();
+  state.hasWorld = !!data.worldName;
   state.structures = data.structures;
   state.canEdit = data.canEdit;
   state.editBlocked = data.editBlocked || '';
@@ -152,6 +158,11 @@ function onScanned(data) {
   renderStructures();
   renderTree();
   selectTab(data.structures.length || !state.files.length ? 'structures' : 'tree');
+  if (state.injecting) {
+    show('screen-progress');
+    $('progress-status').textContent = 'Metiendo las estructuras en el mundo…';
+  }
+  renderInject();
 }
 
 // ---------------------------------------------------------------- estructuras
@@ -374,6 +385,201 @@ function selectTab(name) {
   $('tab-tree').hidden = name !== 'tree';
 }
 for (const t of document.querySelectorAll('.tab')) t.addEventListener('click', () => selectTab(t.dataset.tab));
+
+// ---------------------------------------------------------------- meter estructuras
+
+async function addStructureFiles(fileList) {
+  for (const f of fileList) {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let info = null;
+    let error = null;
+    try {
+      info = checkStructureFile(bytes);
+    } catch (e) {
+      error = e.message;
+    }
+    state.injectList.push({ file: f.name, bytes, info, error, name: structureName(f.name) });
+  }
+  fixNames();
+  $('inject-result').hidden = true;
+  renderInject();
+}
+
+// Nombres únicos (si dos archivos dan el mismo nombre, el segundo se llama _2...).
+function fixNames() {
+  const ok = state.injectList.filter((s) => !s.error);
+  uniqueNames(ok.map((s) => s.name)).forEach((n, i) => (ok[i].name = n));
+}
+
+const validStructures = () => state.injectList.filter((s) => !s.error);
+
+function renderInject() {
+  const list = $('inject-list');
+  list.replaceChildren(...state.injectList.map((s, i) =>
+    h('li', { class: s.error ? 'bad' : '' },
+      s.error
+        ? h('div', {}, h('strong', {}, s.file), h('span', { class: 'file' }, s.error))
+        : h('div', {},
+          h('label', { class: 'namebox' },
+            h('span', {}, 'mystructure:'),
+            h('input', {
+              type: 'text',
+              value: s.name,
+              'aria-label': 'Nombre de ' + s.file,
+              onchange: (e) => {
+                s.name = structureName(e.target.value);
+                fixNames();
+                renderInject();
+              },
+            })),
+          h('span', { class: 'file' }, s.file)),
+      h('button', {
+        type: 'button',
+        class: 'btn small',
+        onclick: () => {
+          state.injectList.splice(i, 1);
+          renderInject();
+        },
+      }, 'Quitar'),
+      s.info ? h('div', { class: 'meta' },
+        `${s.info.size.join(' × ')} · ${fmt.format(s.info.blocks)} bloques` +
+        (s.info.blockEntities ? ` · ${fmt.format(s.info.blockEntities)} con datos (cofres…)` : '') +
+        (s.info.entities ? ` · ${fmt.format(s.info.entities)} entidades` : '')) : null)));
+
+  const n = validStructures().length;
+  $('inject-actions').hidden = !n;
+  const target = $('inject-target');
+  const btn = $('btn-inject');
+  if (state.hasWorld && state.canEdit) {
+    target.textContent = `Se meterán en el mundo abierto: «${state.worldName}». Para otro mundo, pulsa «Cambiar» arriba y ábrelo primero.`;
+    btn.textContent = `Meter ${n === 1 ? 'la estructura' : `las ${n} estructuras`} en «${state.worldName}»`;
+  } else if (state.hasWorld) {
+    target.textContent = `El mundo abierto («${state.worldName}») no se puede editar: ${state.editBlocked}`;
+    btn.textContent = 'Elegir otro mundo y meterlas';
+  } else {
+    target.textContent = 'Al pulsar el botón eliges el mundo (.mcworld, .zip o .tar.gz).';
+    btn.textContent = 'Elegir el mundo y meterlas';
+  }
+  btn.disabled = !(n && $('inject-confirm').checked);
+}
+
+$('input-structs').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) await addStructureFiles(files);
+});
+$('inject-confirm').addEventListener('change', renderInject);
+
+function commandsBlock(ids) {
+  return [
+    h('p', { class: 'steps-title' }, 'Para pegarlas en el juego (con los trucos activados), colócate donde quieras y escribe:'),
+    ...ids.map((id) => {
+      const cmd = `/structure load ${id} ~ ~ ~`;
+      return h('div', { class: 'cmd' }, h('code', {}, cmd),
+        h('button', { type: 'button', class: 'btn small', onclick: () => copyText(cmd) }, 'Copiar'));
+    }),
+    h('p', { class: 'small muted' }, 'También puedes usar un bloque de estructuras en modo «Cargar» con ese nombre (se consigue con /give @s structure_block).'),
+  ];
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Copiado: ' + text);
+  } catch {
+    window.prompt('Copia el texto:', text);
+  }
+}
+
+// Opción 1: .mcpack
+$('btn-mcpack').addEventListener('click', async () => {
+  const list = validStructures();
+  if (!list.length) return;
+  let icon = null;
+  try {
+    const res = await fetch(new URL('../icons/icon-192.png', import.meta.url));
+    if (res.ok) icon = new Uint8Array(await res.arrayBuffer());
+  } catch {
+    /* sin icono */
+  }
+  const packName = $('pack-name').value.trim() || 'Estructuras';
+  const { blob } = buildMcpack(list, { packName, icon });
+  const fileName = (packName.replace(/[\\/:*?"<>|]+/g, '_') || 'estructuras') + '.mcpack';
+  for (const u of state.downloadUrls || []) URL.revokeObjectURL(u);
+  const url = URL.createObjectURL(blob);
+  state.downloadUrls = [url];
+  const r = $('inject-result');
+  r.hidden = false;
+  r.replaceChildren(
+    h('h3', {}, 'Paquete listo'),
+    h('a', { class: 'btn primary', href: url, download: fileName }, `Descargar ${fileName} (${size(blob.size)})`),
+    h('ol', { class: 'result-steps' },
+      h('li', {}, 'Ábrelo con Minecraft (Android: toca la descarga y elige Minecraft; iPhone: Archivos → Compartir → Minecraft). Se importa solo.'),
+      h('li', {}, `En tu mundo: Editar → Paquetes de comportamiento → Activar «${packName}». Activarlo desactiva los logros en ese mundo.`),
+      h('li', {}, 'En un servidor: descomprime el .mcpack dentro de «behavior_packs/» y actívalo en world_behavior_packs.json. En un Realm: actívalo en el mundo antes de subirlo.')),
+    ...commandsBlock(list.map((s) => structureId(s.name))),
+  );
+  r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// Opción 2: dentro de un mundo
+function injectPayload() {
+  return validStructures().map((s) => ({ name: s.name, bytes: s.bytes }));
+}
+
+$('btn-inject').addEventListener('click', () => {
+  if (!validStructures().length) return;
+  if (state.hasWorld && state.canEdit && state.worker) {
+    state.injecting = true;
+    progressScreen();
+    $('progress-status').textContent = 'Metiendo las estructuras en el mundo…';
+    state.worker.postMessage({ type: 'inject', structures: injectPayload() });
+  } else {
+    $('input-inject-world').click();
+  }
+});
+
+$('input-inject-world').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f || !checkBeforeOpen(f.size, { tar: looksLikeTar(f.name), tool: 'files' })) return;
+  ({ base: state.archiveName, ext: state.ext } = splitArchiveName(f.name));
+  markStart(`«${f.name}»`, f.size);
+  state.injecting = true;
+  progressScreen();
+  startWorker().postMessage({ type: 'open', zip: f, inject: injectPayload() });
+});
+
+function onInjected(data) {
+  state.injecting = false;
+  markDone();
+  show('screen-files');
+  const r = $('inject-result');
+  r.hidden = false;
+  r.replaceChildren(
+    h('h3', {}, `Mundo listo con ${data.ids.length === 1 ? 'la estructura' : `las ${data.ids.length} estructuras`}`),
+    h('p', {}, `Se han metido en «${data.worldName}»: ${data.ids.join(', ')}.`),
+    ...(data.replaced.length
+      ? [h('p', { class: 'danger small' }, `⚠ Ya había ${data.replaced.length === 1 ? 'una estructura' : 'estructuras'} con ese nombre en el mundo (${data.replaced.join(', ')}): se ${data.replaced.length === 1 ? 'reemplaza' : 'reemplazan'} por la nueva.`)]
+      : []),
+    ...downloadLinks(data, `${state.archiveName}-con-estructuras`, state.ext),
+    ...commandsBlock(data.ids),
+  );
+  r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('Mundo con las estructuras listo para descargar');
+}
+
+function injectFailed(message) {
+  state.injecting = false;
+  markDone();
+  show(state.hasWorld ? 'screen-files' : 'screen-load');
+  const r = $('inject-result');
+  r.hidden = false;
+  r.replaceChildren(h('strong', { class: 'danger' }, 'No se pudieron meter las estructuras: '), explainError(message));
+  r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+renderInject();
 
 (async () => {
   try {

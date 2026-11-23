@@ -31,7 +31,7 @@
       <div class="card">
         <h2>Archivos del mundo</h2>
         <p class="muted">Mira qué hay dentro de un mundo y descarga cualquier archivo. Saca las <strong>estructuras guardadas con el bloque de estructuras</strong> como archivos <code>.mcstructure</code>, algo que Minecraft no permite hacer desde el móvil.</p>
-        <p class="muted">Solo lectura: el mundo no se modifica y no se sube a ningún sitio.</p>
+        <p class="muted">Tu archivo nunca se modifica ni se sube a ningún sitio: si cambias algo (borrar o meter estructuras), se crea una copia nueva para descargar.</p>
         <label class="btn primary file-btn">
           <input id="input-zip" type="file" accept=".mcworld,.zip,.mcpack,.mcaddon,.tar,.gz,.tgz,application/gzip,application/x-gzip,application/x-tar,application/x-compressed-tar,application/zip,application/octet-stream">
           Abrir archivo .mcworld, .zip o .tar.gz
@@ -116,6 +116,38 @@
           </ul>
         </details>
       </div>
+    </section>
+
+    <!-- Meter estructuras sueltas (.mcstructure) en Minecraft -->
+    <section id="inject" class="card inject">
+      <h2>Meter estructuras (.mcstructure)</h2>
+      <p class="muted">Elige uno o varios archivos <code>.mcstructure</code> sueltos para meterlos en Minecraft: en un paquete <code>.mcpack</code> o directamente dentro de un mundo.</p>
+      <label class="btn file-btn">
+        <input id="input-structs" type="file" multiple accept=".mcstructure,application/octet-stream">
+        Elegir archivos .mcstructure
+      </label>
+      <ul id="inject-list" class="inject-list"></ul>
+
+      <div id="inject-actions" hidden>
+        <div class="inject-option">
+          <h3>Opción 1 · Paquete .mcpack</h3>
+          <p class="small muted">Vale para cualquier mundo, Realm o servidor. Después hay que activarlo en el mundo (Editar → Paquetes de comportamiento), lo que desactiva los logros.</p>
+          <label class="field">Nombre del paquete
+            <input id="pack-name" type="text" maxlength="60" value="Estructuras Hardlands">
+          </label>
+          <button id="btn-mcpack" type="button" class="btn primary">Crear .mcpack</button>
+        </div>
+
+        <div class="inject-option">
+          <h3>Opción 2 · Meter dentro de un mundo</h3>
+          <p class="small muted">Las estructuras se guardan dentro del mundo, como si las hubieras guardado con el bloque de estructuras. No hace falta activar ningún paquete. Se crea una copia del mundo: el original no se toca.</p>
+          <p id="inject-target" class="small"></p>
+          <label class="radio"><input id="inject-confirm" type="checkbox"><span>Tengo guardada una copia del mundo original</span></label>
+          <button id="btn-inject" type="button" class="btn" disabled>Elegir el mundo y meterlas</button>
+          <input id="input-inject-world" type="file" hidden accept=".mcworld,.zip,.tar,.gz,.tgz,application/gzip,application/x-gzip,application/x-tar,application/x-compressed-tar,application/zip,application/octet-stream">
+        </div>
+      </div>
+      <div id="inject-result" class="inject-result" hidden></div>
     </section>
 
     <div id="error" class="card error" hidden>

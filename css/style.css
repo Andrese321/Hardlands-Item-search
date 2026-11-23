@@ -487,3 +487,38 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 }
 .size-hint { margin: 12px 0 0; }
 .sat-note { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 6px 10px; margin: 8px 0 0; }
+
+/* ---------- meter estructuras ---------- */
+.inject h3 { margin: 0 0 4px; font-size: 1rem; }
+.inject-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.inject-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: center;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.inject-list li.bad { background: #fde4e1; color: #7a1712; }
+@media (prefers-color-scheme: dark) { .inject-list li.bad { background: #3b1513; color: #ffd2cc; } }
+.inject-list .file { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; padding: 0; display: block; }
+.inject-list .meta { grid-column: 1 / -1; font-size: 0.82rem; color: var(--muted); }
+.inject-list .namebox { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 0.9rem; }
+.inject-list .namebox span { color: var(--muted); white-space: nowrap; }
+.inject-list .namebox input {
+  min-width: 0;
+  flex: 1;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.inject-option { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+.inject-result { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+.cmd { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 8px; padding: 6px 8px; margin: 6px 0; }
+.cmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; background: none; padding: 0; font-size: 0.85rem; }
+.cmd .btn { width: auto; margin: 0; }

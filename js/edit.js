@@ -1,23 +1,43 @@
 // Edición segura de un mundo: copia todos los ficheros originales sin tocarlos
-// y añade un .log de LevelDB con órdenes de borrado. Al abrir el mundo,
-// Minecraft aplica esos borrados. Lo usan «Borrar chunks» y «Borrar estructuras».
+// y añade un .log de LevelDB con los cambios (borrados o escrituras). Al abrir
+// el mundo, Minecraft aplica ese registro. Lo usan «Borrar chunks», «Borrar
+// estructuras» y «Meter estructuras».
 
-import { deletionBatch, encodeLog, logRecords } from './leveldb.js';
+import { writeBatch, encodeLog, logRecords } from './leveldb.js';
 import { buildZip, storedEntry } from './zip.js';
 
-/** Fichero .log con los borrados (en lotes para no crear uno gigante). */
-export function buildDeletionLog(keys, firstSeq) {
-  const BATCH = 20000;
+/**
+ * Fichero .log con los cambios, en lotes para no crear uno gigante.
+ * @param records Array<{ key: Uint8Array, value: Uint8Array | null }> (null = borrar)
+ */
+export function buildChangeLog(records, firstSeq) {
+  const MAX_RECORDS = 20000;
+  const MAX_BYTES = 4 * 1024 * 1024;
   const batches = [];
-  for (let i = 0; i < keys.length; i += BATCH) batches.push(deletionBatch(keys.slice(i, i + BATCH), firstSeq + i));
+  let start = 0;
+  while (start < records.length) {
+    let end = start;
+    let bytes = 0;
+    while (end < records.length && end - start < MAX_RECORDS && (end === start || bytes < MAX_BYTES)) {
+      bytes += records[end].key.length + (records[end].value?.length || 0);
+      end++;
+    }
+    batches.push(writeBatch(records.slice(start, end), firstSeq + start));
+    start = end;
+  }
   return encodeLog(batches);
 }
 
-/** Comprueba que el .log generado se lee y contiene exactamente esos borrados. */
-export function verifyDeletionLog(log, keys) {
+/** Fichero .log con borrados. */
+export function buildDeletionLog(keys, firstSeq) {
+  return buildChangeLog(keys.map((key) => ({ key, value: null })), firstSeq);
+}
+
+/** Comprueba que el .log generado se lee y contiene exactamente esos cambios. */
+export function verifyDeletionLog(log, records) {
   let count = 0;
   for (const rec of logRecords(log)) count += new DataView(rec.buffer, rec.byteOffset + 8, 4).getUint32(0, true);
-  if (count !== keys.length) throw new Error('Comprobación fallida del registro de borrado.');
+  if (count !== records.length) throw new Error('Comprobación fallida del registro de cambios.');
 }
 
 /** Nombre del .log nuevo: un número mayor que cualquier fichero existente. */
@@ -27,18 +47,27 @@ export function newLogName(scan) {
 }
 
 /**
+ * Copia del mundo con borrados de claves de LevelDB.
  * @param source { kind:'zip', zip } (de openZip) o { kind:'folder', files:[{path, file}] }
  * @param prefix carpeta del mundo dentro del archivo ('' si está en la raíz)
  * @param scan resultado de un escaneo estricto ({ maxSeq, maxFileNumber, manifest })
  * @param keys Array<Uint8Array> claves de LevelDB a borrar
  * @param skipPaths rutas del archivo que no se copian (p. ej. .mcstructure de packs)
  */
-export async function buildWorldWithDeletions(source, prefix, scan, keys, { skipPaths = new Set(), onProgress = () => {} } = {}) {
+export function buildWorldWithDeletions(source, prefix, scan, keys, opts = {}) {
+  return buildWorldWithChanges(source, prefix, scan, keys.map((key) => ({ key, value: null })), opts);
+}
+
+/**
+ * Copia del mundo con cambios en LevelDB (escrituras y borrados).
+ * @param records Array<{ key, value | null }>
+ */
+export async function buildWorldWithChanges(source, prefix, scan, records, { skipPaths = new Set(), onProgress = () => {} } = {}) {
   const entries = [];
   let logPath = null;
-  if (keys.length) {
-    const log = buildDeletionLog(keys, scan.maxSeq + 1);
-    verifyDeletionLog(log, keys);
+  if (records.length) {
+    const log = buildChangeLog(records, scan.maxSeq + 1);
+    verifyDeletionLog(log, records);
     logPath = prefix + 'db/' + newLogName(scan);
     entries.push(storedEntry(logPath, log));
   }
@@ -61,7 +90,7 @@ export async function buildWorldWithDeletions(source, prefix, scan, keys, { skip
     }
   }
   const all = [...originals, ...entries];
-  return { blob: buildZip(all), mcworld: mcworldOf(all, prefix), keys: keys.length, logPath };
+  return { blob: buildZip(all), mcworld: mcworldOf(all, prefix), keys: records.length, logPath };
 }
 
 /**

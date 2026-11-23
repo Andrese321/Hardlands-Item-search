@@ -548,16 +548,29 @@ function maskCrc(crc) {
 
 /** WriteBatch con borrados de `keys` (Array<Uint8Array>) empezando en `seq`. */
 export function deletionBatch(keys, seq) {
+  return writeBatch(keys.map((key) => ({ key, value: null })), seq);
+}
+
+/**
+ * WriteBatch de LevelDB: cada registro es una escritura ({key, value}) o un
+ * borrado ({key, value: null}). Las secuencias empiezan en `seq`.
+ */
+export function writeBatch(records, seq) {
   const head = new Uint8Array(12);
   const dv = new DataView(head.buffer);
   dv.setUint32(0, seq % 4294967296, true);
   dv.setUint32(4, Math.floor(seq / 4294967296), true);
-  dv.setUint32(8, keys.length, true);
+  dv.setUint32(8, records.length, true);
   const parts = [head];
-  for (const k of keys) {
-    const pre = [0];
-    putVarint(pre, k.length);
-    parts.push(Uint8Array.from(pre), k);
+  for (const { key, value } of records) {
+    const pre = [value ? 1 : 0];
+    putVarint(pre, key.length);
+    parts.push(Uint8Array.from(pre), key);
+    if (value) {
+      const len = [];
+      putVarint(len, value.length);
+      parts.push(Uint8Array.from(len), value);
+    }
   }
   return concat(parts);
 }

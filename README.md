@@ -52,6 +52,17 @@ Tercera herramienta, en la pestaña **Archivos**:
   (el original no se toca). Las guardadas en el mundo se borran con un registro de borrado de
   LevelDB, igual que «Borrar chunks»; las de los packs se quitan de la copia. Las construcciones
   ya puestas en el mapa no cambian: solo se borra la plantilla guardada.
+- **Meter estructuras** (`.mcstructure` sueltos), de dos formas:
+  1. **Crear .mcpack:** un paquete de comportamiento con las estructuras en `structures/`, su
+     `manifest.json` (con identificadores nuevos) e icono. Se abre con Minecraft y se activa en el
+     mundo; vale para cualquier mundo, Realm o servidor.
+  2. **Meter dentro de un mundo:** se escriben en la base de datos del mundo con la clave
+     `structuretemplate_mystructure:<nombre>`, igual que el bloque de estructuras al «Guardar»,
+     mediante un registro de LevelDB (como el borrado de chunks). No hace falta activar paquetes.
+     Si ya había una con el mismo nombre, se reemplaza. Se descarga como .mcworld o .zip.
+  En los dos casos se pegan con `/structure load mystructure:<nombre> ~ ~ ~`. Los nombres se
+  adaptan a lo que acepta el juego (minúsculas, sin espacios ni tildes) y se pueden cambiar. Las
+  estructuras de Java (.nbt) se rechazan porque Bedrock no puede cargarlas.
 - **Todos los archivos:** explorador de carpetas del mundo (o de cualquier .zip/.mcpack/.mcaddon)
   para descargar cualquier archivo suelto.
 
@@ -176,6 +187,7 @@ files.html              explorador de archivos y estructuras
 js/files.js             extracción de estructuras (.mcstructure) y árbol de archivos
 js/files-app.js         interfaz del explorador
 js/files-worker.js      trabajo pesado del explorador
+js/inject.js            meter estructuras: .mcpack o dentro del mundo
 js/edit.js              copia del mundo con borrados (lo usan chunks y estructuras)
 seed.html               buscador de estructuras por semilla
 js/seedfinder.js        posiciones de estructuras de Bedrock y búsqueda de parejas

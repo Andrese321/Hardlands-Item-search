@@ -4,7 +4,8 @@ import { buildZip, storedEntry } from './zip.js';
 import { openArchive } from './archive.js';
 import { findWorlds } from './world.js';
 import { findStructures, describeStructure, structureFileName } from './files.js';
-import { buildWorldWithDeletions } from './edit.js';
+import { buildWorldWithDeletions, buildWorldWithChanges } from './edit.js';
+import { injectionRecords, structureId } from './inject.js';
 
 let entries = []; // { path, size, read() }
 let structures = []; // { id, key?, file, source, path?, bytes?, info, error }
@@ -13,6 +14,8 @@ let prefix = null; // carpeta del mundo dentro del archivo
 let scanInfo = null; // datos del escaneo para poder crear una copia con borrados
 let canEdit = false;
 let editBlocked = ''; // motivo por el que no se puede borrar
+let worldName = '';
+let pendingInject = null; // estructuras a meter cuando termine de abrirse el mundo
 
 const status = (text) => postMessage({ type: 'status', text });
 
@@ -53,7 +56,7 @@ async function scan(worldPrefix) {
   editBlocked = '';
   structures = [];
   const warnings = [];
-  let worldName = '';
+  worldName = '';
   if (prefix !== null) {
     const dbPrefix = prefix + 'db/';
     const db = entries
@@ -109,6 +112,28 @@ async function scan(worldPrefix) {
     editBlocked,
     structures: structures.map(({ bytes, key, ...rest }) => rest),
   });
+
+  if (pendingInject) {
+    const list = pendingInject;
+    pendingInject = null;
+    await inject(list);
+  }
+}
+
+/** Mete estructuras (.mcstructure) en la base de datos del mundo abierto. */
+async function inject(list) {
+  if (prefix === null) throw new Error('Ese archivo no contiene un mundo de Minecraft (falta la carpeta «db»).');
+  if (!canEdit) throw new Error(editBlocked || 'No se puede editar este mundo.');
+  status('Metiendo las estructuras en el mundo…');
+  const existing = new Set(structures.filter((s) => s.source === 'world').map((s) => s.id));
+  const ids = list.map((s) => structureId(s.name));
+  const out = await buildWorldWithChanges(source, prefix, scanInfo, injectionRecords(list), {
+    onProgress: (value) => postMessage({ type: 'progress', value }),
+  });
+  postMessage({
+    type: 'injected', blob: out.blob, mcworld: out.mcworld, nested: !!prefix, worldName,
+    ids, replaced: ids.filter((id) => existing.has(id)),
+  });
 }
 
 async function structureBytes(s) {
@@ -119,6 +144,7 @@ async function structureBytes(s) {
 self.onmessage = async ({ data }) => {
   try {
     if (data.type === 'open') {
+      pendingInject = data.inject || null;
       await open(data);
     } else if (data.type === 'scan') {
       await scan(data.prefix);
@@ -150,8 +176,11 @@ self.onmessage = async ({ data }) => {
         onProgress: (value) => postMessage({ type: 'progress', value }),
       });
       postMessage({ type: 'deleted', blob: out.blob, mcworld: out.mcworld, nested: !!prefix, world: keys.length, packs: skipPaths.size, names: chosen.map((s) => s.id) });
+    } else if (data.type === 'inject') {
+      await inject(data.structures);
     }
   } catch (e) {
+    pendingInject = null;
     postMessage({ type: 'error', message: e?.message || String(e) });
   }
 };
