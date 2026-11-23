@@ -526,3 +526,5 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; }
 .cmd-preview .steps-title { margin-top: 0; }
 .cmd-notes { margin: 0 0 8px; padding-left: 18px; }
 .cmd-notes li { margin: 2px 0; }
+.cmd-alt { margin: 0 0 10px; }
+.cmd-alt summary { cursor: pointer; color: var(--muted); }

@@ -36,7 +36,7 @@ test('crea un .mcpack con manifest, icono y estructuras', async () => {
   const icon = Uint8Array.from([137, 80, 78, 71]);
   const { blob, manifest } = buildMcpack([{ name: 'puente', bytes: puente }, { name: 'casa', bytes: casa }], { packName: 'Mis cosas', icon });
   const pack = await openZip(new Blob([await blob.arrayBuffer()]));
-  assert.deepEqual(pack.entries.map((e) => e.name), ['manifest.json', 'pack_icon.png', 'structures/puente.mcstructure', 'structures/casa.mcstructure']);
+  assert.deepEqual(pack.entries.map((e) => e.name), ['manifest.json', 'pack_icon.png', 'scripts/main.js', 'structures/puente.mcstructure', 'structures/casa.mcstructure']);
   const m = JSON.parse(new TextDecoder().decode(await pack.read(pack.entries[0])));
   assert.deepEqual(m, manifest);
   assert.equal(m.header.name, 'Mis cosas');
@@ -45,7 +45,16 @@ test('crea un .mcpack con manifest, icono y estructuras', async () => {
   assert.match(m.header.uuid, uuid);
   assert.match(m.modules[0].uuid, uuid);
   assert.notEqual(m.header.uuid, m.modules[0].uuid);
-  assert.deepEqual(Buffer.from(await pack.read(pack.entries[2])), Buffer.from(puente));
+  assert.deepEqual(Buffer.from(await pack.read(pack.entries[3])), Buffer.from(puente));
+  // cargador automático: módulo de script con la API estable 1.12.0
+  const script = m.modules.find((x) => x.type === 'script');
+  assert.equal(script.entry, 'scripts/main.js');
+  assert.deepEqual(m.dependencies, [{ module_name: '@minecraft/server', version: '1.12.0' }]);
+  assert.match(new TextDecoder().decode(await pack.read(pack.entries[2])), /hardlands:cargar/);
+  // sin cargador: solo datos
+  const plain = buildMcpack([{ name: 'x', bytes: puente }], { loader: false }).manifest;
+  assert.equal(plain.modules.length, 1);
+  assert.equal(plain.dependencies, undefined);
   // cada paquete lleva identificadores nuevos
   assert.notEqual(buildMcpack([{ name: 'x', bytes: puente }]).manifest.header.uuid, m.header.uuid);
 });
@@ -99,4 +108,29 @@ test('comando ajustado al tamaño de la estructura', async () => {
   assert.ok(tall.notes.some((n) => /Y 220/.test(n)));
   // 320 bloques de alto: solo cabe desde Y 0
   assert.equal(loadCommand('alta', [5, 320, 5]).cmd, '/structure load mystructure:alta ~ 0 ~');
+});
+
+test('cargador automático dentro del mundo: paquete activado, sin duplicados y conservando otros paquetes', async () => {
+  const { worldLoaderFiles, WORLD_LOADER_UUIDS } = await import('../js/inject.js');
+  const { scan } = await findStructures(dbOf(zip));
+  const existing = new TextEncoder().encode(JSON.stringify([{ pack_id: 'otro-pack', version: [2, 0, 0] }]));
+  const list = [{ name: 'eva01', bytes: puente, size: [80, 256, 87] }];
+  const extraFiles = worldLoaderFiles('', list, existing);
+  const out = await buildWorldWithChanges({ kind: 'zip', zip }, '', scan, injectionRecords(list), { extraFiles });
+  const edited = await openZip(new Blob([await out.mcworld.arrayBuffer()]));
+  const read = async (name) => new TextDecoder().decode(await edited.read(edited.entries.find((e) => e.name === name)));
+  const manifest = JSON.parse(await read('behavior_packs/hardlands_cargador/manifest.json'));
+  assert.equal(manifest.header.uuid, WORLD_LOADER_UUIDS[0]);
+  assert.deepEqual(manifest.dependencies, [{ module_name: '@minecraft/server', version: '1.12.0' }]);
+  assert.match(await read('behavior_packs/hardlands_cargador/scripts/main.js'), /"eva01":\[80,256,87\]/);
+  const packs = JSON.parse(await read('world_behavior_packs.json'));
+  assert.deepEqual(packs, [{ pack_id: 'otro-pack', version: [2, 0, 0] }, { pack_id: WORLD_LOADER_UUIDS[0], version: [1, 0, 0] }]);
+  // una sola copia de cada fichero
+  const names = edited.entries.map((e) => e.name);
+  assert.equal(names.length, new Set(names).size);
+  // volver a meterlo no lo duplica
+  const again = JSON.parse(new TextDecoder().decode(worldLoaderFiles('', list, new TextEncoder().encode(JSON.stringify(packs))).find((f) => f.path === 'world_behavior_packs.json').bytes));
+  assert.equal(again.filter((p) => p.pack_id === WORLD_LOADER_UUIDS[0]).length, 1);
+  // mundo dentro de una carpeta: las rutas llevan la carpeta
+  assert.ok(worldLoaderFiles('worlds/Hardlands/', list).every((f) => f.path.startsWith('worlds/Hardlands/')));
 });

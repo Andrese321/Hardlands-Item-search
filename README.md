@@ -66,6 +66,16 @@ Tercera herramienta, en la pestaña **Archivos**:
   mundo si es muy alta (p. ej. `~-40 64 ~-43` para una de 80 × 256 × 87). Los nombres se
   adaptan a lo que acepta el juego (minúsculas, sin espacios ni tildes) y se pueden cambiar. Las
   estructuras de Java (.nbt) se rechazan porque Bedrock no puede cargarlas.
+- **Cargador automático** (casilla en las dos opciones, activada por defecto): un script para el
+  juego (API estable `@minecraft/server` 1.12.0, Minecraft 1.21.0+, sin experimentos). Con
+  `/scriptevent hardlands:cargar <nombre> [90|180|270]` crea áreas de carga (ticking areas) que
+  cubren toda la zona, espera a que los chunks estén cargados mostrando el progreso, coloca la
+  estructura entera (centrada en el jugador si es grande y a una altura que quepa) y quita las
+  áreas de carga. Así las estructuras grandes aparecen enteras en vez de a trozos.
+  `/scriptevent hardlands:lista` muestra las disponibles. En la opción 2 el cargador se mete en el
+  mundo (behavior_packs/hardlands_cargador y world_behavior_packs.json, sin duplicarse).
+  Comprobado con los tipos oficiales de la API (TypeScript) y con un Minecraft simulado
+  (`tests/loader.test.js`).
 - **Todos los archivos:** explorador de carpetas del mundo (o de cualquier .zip/.mcpack/.mcaddon)
   para descargar cualquier archivo suelto.
 

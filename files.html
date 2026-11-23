@@ -135,6 +135,7 @@
           <label class="field">Nombre del paquete
             <input id="pack-name" type="text" maxlength="60" value="Estructuras Hardlands">
           </label>
+          <label class="radio"><input id="pack-loader" type="checkbox" checked><span><strong>Incluir el cargador automático</strong> (recomendado para estructuras grandes): carga toda la zona antes de colocarla, para que aparezca entera y no a trozos.</span></label>
           <div id="pack-cmds" class="cmd-preview"></div>
           <button id="btn-mcpack" type="button" class="btn primary">Crear .mcpack</button>
         </div>
@@ -143,6 +144,7 @@
           <h3>Opción 2 · Meter dentro de un mundo</h3>
           <p class="small muted">Las estructuras se guardan dentro del mundo, como si las hubieras guardado con el bloque de estructuras. No hace falta activar ningún paquete. Se crea una copia del mundo: el original no se toca.</p>
           <p id="inject-target" class="small"></p>
+          <label class="radio"><input id="inject-loader" type="checkbox" checked><span><strong>Meter también el cargador automático</strong> en el mundo (carga toda la zona antes de colocar la estructura). Queda como un paquete de comportamiento activado en ese mundo.</span></label>
           <div id="inject-cmds" class="cmd-preview"></div>
           <label class="radio"><input id="inject-confirm" type="checkbox"><span>Tengo guardada una copia del mundo original</span></label>
           <button id="btn-inject" type="button" class="btn" disabled>Elegir el mundo y meterlas</button>

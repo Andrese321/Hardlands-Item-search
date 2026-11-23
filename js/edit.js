@@ -62,8 +62,10 @@ export function buildWorldWithDeletions(source, prefix, scan, keys, opts = {}) {
  * Copia del mundo con cambios en LevelDB (escrituras y borrados).
  * @param records Array<{ key, value | null }>
  */
-export async function buildWorldWithChanges(source, prefix, scan, records, { skipPaths = new Set(), onProgress = () => {} } = {}) {
-  const entries = [];
+export async function buildWorldWithChanges(source, prefix, scan, records, { skipPaths = new Set(), extraFiles = [], onProgress = () => {} } = {}) {
+  // extraFiles: [{ path, bytes }] ficheros que se añaden (o reemplazan a los originales)
+  skipPaths = new Set([...skipPaths, ...extraFiles.map((f) => f.path)]);
+  const entries = extraFiles.map((f) => storedEntry(f.path, f.bytes));
   let logPath = null;
   if (records.length) {
     const log = buildChangeLog(records, scan.maxSeq + 1);

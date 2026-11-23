@@ -5,7 +5,7 @@ import { openArchive } from './archive.js';
 import { findWorlds } from './world.js';
 import { findStructures, describeStructure, structureFileName } from './files.js';
 import { buildWorldWithDeletions, buildWorldWithChanges } from './edit.js';
-import { injectionRecords, structureId } from './inject.js';
+import { injectionRecords, structureId, worldLoaderFiles } from './inject.js';
 
 let entries = []; // { path, size, read() }
 let structures = []; // { id, key?, file, source, path?, bytes?, info, error }
@@ -114,25 +114,31 @@ async function scan(worldPrefix) {
   });
 
   if (pendingInject) {
-    const list = pendingInject;
+    const { structures: list, loader, icon } = pendingInject;
     pendingInject = null;
-    await inject(list);
+    await inject(list, { loader, icon });
   }
 }
 
 /** Mete estructuras (.mcstructure) en la base de datos del mundo abierto. */
-async function inject(list) {
+async function inject(list, { loader = false, icon = null } = {}) {
   if (prefix === null) throw new Error('Ese archivo no contiene un mundo de Minecraft (falta la carpeta «db»).');
   if (!canEdit) throw new Error(editBlocked || 'No se puede editar este mundo.');
   status('Metiendo las estructuras en el mundo…');
   const existing = new Set(structures.filter((s) => s.source === 'world').map((s) => s.id));
   const ids = list.map((s) => structureId(s.name));
+  let extraFiles = [];
+  if (loader) {
+    const current = entries.find((e) => e.path === prefix + 'world_behavior_packs.json');
+    extraFiles = worldLoaderFiles(prefix, list.map((s) => ({ name: s.name, size: s.size })), current ? await current.read() : null, icon);
+  }
   const out = await buildWorldWithChanges(source, prefix, scanInfo, injectionRecords(list), {
+    extraFiles,
     onProgress: (value) => postMessage({ type: 'progress', value }),
   });
   postMessage({
     type: 'injected', blob: out.blob, mcworld: out.mcworld, nested: !!prefix, worldName,
-    ids, replaced: ids.filter((id) => existing.has(id)),
+    ids, replaced: ids.filter((id) => existing.has(id)), loader,
   });
 }
 
@@ -177,7 +183,7 @@ self.onmessage = async ({ data }) => {
       });
       postMessage({ type: 'deleted', blob: out.blob, mcworld: out.mcworld, nested: !!prefix, world: keys.length, packs: skipPaths.size, names: chosen.map((s) => s.id) });
     } else if (data.type === 'inject') {
-      await inject(data.structures);
+      await inject(data.structures, { loader: data.loader, icon: data.icon });
     }
   } catch (e) {
     pendingInject = null;

@@ -3,7 +3,7 @@ import { buildTree } from './files.js';
 import { splitArchiveName } from './archive.js';
 import { checkBeforeOpen, looksLikeTar, markStart, markDone, checkPreviousCrash, explainError } from './sizewarn.js';
 import { itemLabel } from './search.js';
-import { checkStructureFile, structureName, uniqueNames, structureId, buildMcpack, loadCommand } from './inject.js';
+import { checkStructureFile, structureName, uniqueNames, structureId, buildMcpack, loadCommand, LOADER_EVENT } from './inject.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = new Intl.NumberFormat('es-ES');
@@ -472,19 +472,28 @@ $('input-structs').addEventListener('change', async (e) => {
 $('inject-confirm').addEventListener('change', renderInject);
 
 // Comandos para pegar las estructuras, con botón de copiar y notas según su tamaño.
-// items: Array<{ name, info }>
-function commandsBlock(items, intro) {
+// items: Array<{ name, info }>; loader: si hay cargador automático
+function commandsBlock(items, intro, loader) {
+  const cmdRow = (cmd) => h('div', { class: 'cmd' }, h('code', {}, cmd),
+    h('button', { type: 'button', class: 'btn small', onclick: () => copyText(cmd) }, 'Copiar'));
   const out = [h('p', { class: 'steps-title' }, intro)];
   for (const s of items) {
     const { cmd, notes } = loadCommand(s.name, s.info?.size);
-    out.push(
-      h('div', { class: 'cmd' }, h('code', {}, cmd),
-        h('button', { type: 'button', class: 'btn small', onclick: () => copyText(cmd) }, 'Copiar')),
-      h('ul', { class: 'cmd-notes small muted' }, notes.map((n) => h('li', {}, n))),
-    );
+    if (loader) {
+      out.push(
+        cmdRow(`/scriptevent ${LOADER_EVENT} ${s.name}`),
+        h('ul', { class: 'cmd-notes small muted' },
+          h('li', {}, 'Carga toda la zona (verás el progreso arriba de la barra de objetos) y coloca la estructura entera, centrada donde estás si es grande y a una altura que quepa.'),
+          h('li', {}, `Para girarla añade 90, 180 o 270 al final: /scriptevent ${LOADER_EVENT} ${s.name} 90`),
+          h('li', {}, 'Todo lo que haya en ese espacio se reemplaza (también por aire): ponla en una zona despejada.')),
+        h('details', { class: 'cmd-alt small' }, h('summary', {}, 'Comando normal, sin el cargador'), cmdRow(cmd)),
+      );
+    } else {
+      out.push(cmdRow(cmd), h('ul', { class: 'cmd-notes small muted' }, notes.map((n) => h('li', {}, n))));
+    }
   }
-  out.push(h('p', { class: 'small muted' }, 'Hacen falta los trucos activados (Editar mundo → Trucos). ' +
-    'Si quieres girarla, añade al final 90_degrees, 180_degrees o 270_degrees.'));
+  out.push(h('p', { class: 'small muted' }, 'Hacen falta los trucos activados (Editar mundo → Trucos).' +
+    (loader ? ` Para ver la lista de estructuras: /scriptevent ${LOADER_EVENT.replace('cargar', 'lista')}` : ' Si quieres girarla, añade al final 90_degrees, 180_degrees o 270_degrees.')));
   return out;
 }
 
@@ -495,11 +504,27 @@ function packName() {
 function renderCommandPreviews() {
   const list = validStructures();
   $('pack-cmds').replaceChildren(...(list.length ? commandsBlock(list,
-    `Después de abrir el .mcpack con Minecraft y activar el paquete «${packName()}» en tu mundo (Editar → Paquetes de comportamiento), entra y escribe:`) : []));
+    `Después de abrir el .mcpack con Minecraft y activar el paquete «${packName()}» en tu mundo (Editar → Paquetes de comportamiento), entra y escribe:`,
+    $('pack-loader').checked) : []));
   $('inject-cmds').replaceChildren(...(list.length ? commandsBlock(list,
-    'Después de importar el mundo modificado, entra y escribe (no hace falta activar ningún paquete):') : []));
+    $('inject-loader').checked
+      ? 'Después de importar el mundo modificado (ya trae el cargador activado), entra y escribe:'
+      : 'Después de importar el mundo modificado, entra y escribe (no hace falta activar ningún paquete):',
+    $('inject-loader').checked) : []));
 }
 $('pack-name').addEventListener('input', renderCommandPreviews);
+$('pack-loader').addEventListener('change', renderCommandPreviews);
+$('inject-loader').addEventListener('change', renderCommandPreviews);
+
+async function packIcon() {
+  try {
+    const res = await fetch(new URL('../icons/icon-192.png', import.meta.url));
+    if (res.ok) return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    /* sin icono */
+  }
+  return null;
+}
 
 async function copyText(text) {
   try {
@@ -514,15 +539,10 @@ async function copyText(text) {
 $('btn-mcpack').addEventListener('click', async () => {
   const list = validStructures();
   if (!list.length) return;
-  let icon = null;
-  try {
-    const res = await fetch(new URL('../icons/icon-192.png', import.meta.url));
-    if (res.ok) icon = new Uint8Array(await res.arrayBuffer());
-  } catch {
-    /* sin icono */
-  }
+  const icon = await packIcon();
   const packName = $('pack-name').value.trim() || 'Estructuras';
-  const { blob } = buildMcpack(list, { packName, icon });
+  const loader = $('pack-loader').checked;
+  const { blob } = buildMcpack(list, { packName, icon, loader });
   const fileName = (packName.replace(/[\\/:*?"<>|]+/g, '_') || 'estructuras') + '.mcpack';
   for (const u of state.downloadUrls || []) URL.revokeObjectURL(u);
   const url = URL.createObjectURL(blob);
@@ -534,31 +554,33 @@ $('btn-mcpack').addEventListener('click', async () => {
     h('a', { class: 'btn primary', href: url, download: fileName }, `Descargar ${fileName} (${size(blob.size)})`),
     h('ol', { class: 'result-steps' },
       h('li', {}, 'Ábrelo con Minecraft (Android: toca la descarga y elige Minecraft; iPhone: Archivos → Compartir → Minecraft). Se importa solo.'),
-      h('li', {}, `En tu mundo: Editar → Paquetes de comportamiento → Activar «${packName}». Activarlo desactiva los logros en ese mundo.`),
+      h('li', {}, `En tu mundo: Editar → Paquetes de comportamiento → Activar «${packName}». Activarlo desactiva los logros en ese mundo.` +
+        (loader ? ' El cargador usa scripts estables: no hace falta activar ningún experimento.' : '')),
       h('li', {}, 'En un servidor: descomprime el .mcpack dentro de «behavior_packs/» y actívalo en world_behavior_packs.json. En un Realm: actívalo en el mundo antes de subirlo.')),
-    ...commandsBlock(list, `Cuando el paquete «${packName}» esté activado en tu mundo, entra y escribe:`),
+    ...commandsBlock(list, `Cuando el paquete «${packName}» esté activado en tu mundo, entra y escribe:`, loader),
   );
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 // Opción 2: dentro de un mundo
-function injectPayload() {
-  return validStructures().map((s) => ({ name: s.name, bytes: s.bytes }));
+function injectStructures() {
+  return validStructures().map((s) => ({ name: s.name, bytes: s.bytes, size: s.info?.size || [1, 1, 1] }));
 }
 
-$('btn-inject').addEventListener('click', () => {
+$('btn-inject').addEventListener('click', async () => {
   if (!validStructures().length) return;
   if (state.hasWorld && state.canEdit && state.worker) {
     state.injecting = true;
     progressScreen();
     $('progress-status').textContent = 'Metiendo las estructuras en el mundo…';
-    state.worker.postMessage({ type: 'inject', structures: injectPayload() });
+    const loader = $('inject-loader').checked;
+    state.worker.postMessage({ type: 'inject', structures: injectStructures(), loader, icon: loader ? await packIcon() : null });
   } else {
     $('input-inject-world').click();
   }
 });
 
-$('input-inject-world').addEventListener('change', (e) => {
+$('input-inject-world').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f || !checkBeforeOpen(f.size, { tar: looksLikeTar(f.name), tool: 'files' })) return;
@@ -566,7 +588,8 @@ $('input-inject-world').addEventListener('change', (e) => {
   markStart(`«${f.name}»`, f.size);
   state.injecting = true;
   progressScreen();
-  startWorker().postMessage({ type: 'open', zip: f, inject: injectPayload() });
+  const loader = $('inject-loader').checked;
+  startWorker().postMessage({ type: 'open', zip: f, inject: { structures: injectStructures(), loader, icon: loader ? await packIcon() : null } });
 });
 
 function onInjected(data) {
@@ -581,8 +604,9 @@ function onInjected(data) {
     ...(data.replaced.length
       ? [h('p', { class: 'danger small' }, `⚠ Ya había ${data.replaced.length === 1 ? 'una estructura' : 'estructuras'} con ese nombre en el mundo (${data.replaced.join(', ')}): se ${data.replaced.length === 1 ? 'reemplaza' : 'reemplazan'} por la nueva.`)]
       : []),
+    ...(data.loader ? [h('p', { class: 'small muted' }, 'El mundo lleva el «Cargador de estructuras Hardlands» ya activado (paquete de comportamiento: los logros quedan desactivados en ese mundo).')] : []),
     ...downloadLinks(data, `${state.archiveName}-con-estructuras`, state.ext),
-    ...commandsBlock(validStructures(), 'Al entrar en el mundo, escribe:'),
+    ...commandsBlock(validStructures(), 'Al entrar en el mundo, escribe:', data.loader),
   );
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
   toast('Mundo con las estructuras listo para descargar');
